@@ -1,0 +1,2487 @@
+<!--
+  ============================================================
+  Throw Art Studio -- KPI Tracker
+  ============================================================
+
+  HOSTING (so you can access from any browser/device):
+
+  Option A -- Netlify (easiest, 2 minutes):
+    1. Go to https://netlify.com and sign up (free).
+    2. Drag and drop this HTML file onto the Netlify dashboard.
+    3. Netlify gives you a live URL (e.g. your-name.netlify.app).
+    4. Bookmark it. That's your hosted tracker.
+
+  Option B -- GitHub Pages:
+    1. Create a free GitHub repo.
+    2. Upload this file as index.html.
+    3. Go to Settings > Pages > Deploy from branch (main, root).
+    4. GitHub gives you a URL like username.github.io/repo-name.
+
+  GOOGLE SHEETS SYNC:
+    1. Open tools/sheets-sync.gs in Google Apps Script (script.google.com).
+    2. Replace SHEET_ID with your Google Sheet's ID.
+    3. Deploy as a web app (Execute as: Me, Access: Anyone).
+    4. Copy the web app URL.
+    5. In this tracker, click the "Sync" button and paste the URL.
+
+  DATA BACKUP:
+    Click the "Backup" button in the top bar at any time to download
+    a JSON file of all your data. Store it in Google Drive.
+  ============================================================
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>KPI Tracker - Throw Art Studio</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #faf6ea;
+      --headline: #60621D;
+      --text: #717955;
+      --accent: #9bb9be;
+      --terracotta: #bf4e30;
+      --amber: #c78b25;
+      --green: #3a8a4a;
+      --border: #e8e5dc;
+      --white: #fff;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: #333;
+      min-height: 100vh;
+    }
+
+    /* Topbar */
+    .topbar {
+      background: var(--white);
+      border-bottom: 1px solid var(--border);
+      padding: 14px 24px;
+      display: flex; align-items: center; justify-content: space-between;
+      position: sticky; top: 0; z-index: 10;
+    }
+    .topbar-title { font-size: 15px; font-weight: 700; color: var(--headline); }
+    .topbar-sub   { font-size: 12px; color: var(--text); margin-top: 1px; }
+    .btn-log {
+      background: var(--headline); color: white; border: none;
+      padding: 9px 18px; border-radius: 7px; font-size: 13px; font-weight: 600; cursor: pointer;
+    }
+    .btn-log:hover { background: #4a4b16; }
+
+    /* Dashboard */
+    .dash { max-width: 980px; margin: 0 auto; padding: 28px 24px 60px; }
+
+    /* Month nav */
+    .month-nav { display: flex; align-items: center; gap: 12px; margin-bottom: 22px; }
+    .month-nav button {
+      width: 30px; height: 30px; border: 1px solid var(--border); border-radius: 6px;
+      background: white; cursor: pointer; font-size: 16px;
+      display: flex; align-items: center; justify-content: center; color: var(--text);
+    }
+    .month-nav button:hover { background: #f5f3ec; }
+    .month-label { font-size: 17px; font-weight: 700; color: var(--headline); min-width: 160px; }
+
+    /* Cards */
+    .cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 28px; }
+    .card { background: var(--white); border-radius: 10px; padding: 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.07); }
+    .card-label {
+      font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;
+      color: var(--text); font-weight: 600; margin-bottom: 6px;
+      display: flex; align-items: center; gap: 5px;
+    }
+    .card-val  { font-size: 22px; font-weight: 700; color: var(--headline); letter-spacing: -0.5px; }
+    .card-sub  { font-size: 11px; color: #bbb; margin-top: 3px; }
+    .card-goal { font-size: 11px; color: #bbb; margin-top: 4px; }
+
+    .dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+    .dot-green { background: var(--green); }
+    .dot-amber { background: var(--amber); }
+    .dot-red   { background: var(--terracotta); }
+    .dot-grey  { background: #ccc; }
+
+    /* Section label */
+    .section-label {
+      font-size: 12px; font-weight: 700; color: var(--text);
+      margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.5px;
+    }
+
+    /* Table */
+    .table-wrap { background: var(--white); border-radius: 10px; overflow-x: auto; box-shadow: 0 1px 4px rgba(0,0,0,0.07); }
+    table { width: 100%; border-collapse: collapse; }
+    thead th {
+      background: #f5f3ec; padding: 10px 14px; text-align: left;
+      font-size: 11px; font-weight: 600; text-transform: uppercase;
+      letter-spacing: 0.4px; color: #888; white-space: nowrap;
+    }
+    tbody tr { border-top: 1px solid #f2f0ea; }
+    tbody tr:hover { background: #faf9f5; }
+    td { padding: 11px 14px; font-size: 13px; white-space: nowrap; }
+    .td-date { font-weight: 700; color: var(--headline); }
+    .td-rev  { font-weight: 700; }
+    .good { color: var(--green); font-weight: 600; }
+    .ok   { color: var(--amber); font-weight: 600; }
+    .bad  { color: var(--terracotta); font-weight: 600; }
+    .na   { color: #bbb; }
+    .del-btn  { background: var(--terracotta); color: white; border: none; cursor: pointer; font-size: 11px; font-weight: 800; padding: 2px 7px; border-radius: 4px; opacity: 0.65; }
+    .del-btn:hover  { opacity: 1; }
+    .edit-btn { background: none; border: none; color: #aaa; cursor: pointer; font-size: 14px; padding: 0 3px; }
+    .edit-btn:hover { color: var(--accent); }
+    .empty { text-align: center; padding: 56px 24px; color: #bbb; }
+    .empty p { margin-bottom: 16px; font-size: 15px; }
+    .empty .btn-log-empty {
+      background: var(--headline); color: white; border: none;
+      padding: 10px 20px; border-radius: 7px; font-size: 14px; font-weight: 600; cursor: pointer;
+    }
+
+    /* Membership breakdown */
+    .mbr-section { margin-top: 28px; }
+    .mbr-table-wrap { background: var(--white); border-radius: 10px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.07); }
+    .mbr-tier-row { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-top: 1px solid #f2f0ea; font-size: 13px; }
+    .mbr-tier-row:first-child { border-top: none; }
+    .mbr-tier-total { background: #f5f3ec; font-weight: 700; }
+    .mbr-tier-name { color: #555; }
+    .mbr-tier-count { color: var(--headline); font-weight: 600; min-width: 60px; text-align: center; }
+    .mbr-tier-mrr  { color: var(--green); font-weight: 700; min-width: 90px; text-align: right; }
+
+    /* Wizard */
+    #wizard {
+      display: none; position: fixed; inset: 0;
+      background: var(--bg); z-index: 200; overflow-y: auto;
+    }
+    .wiz-bar { padding: 18px 24px 0; display: flex; align-items: center; justify-content: space-between; }
+    .wiz-step-label { font-size: 12px; color: #aaa; }
+    .wiz-close { background: none; border: none; font-size: 20px; cursor: pointer; color: #aaa; }
+    .wiz-close:hover { color: #444; }
+    .progress-track { height: 3px; background: #e5e2d8; margin: 10px 24px 0; border-radius: 2px; overflow: hidden; }
+    .progress-fill  { height: 100%; background: var(--headline); border-radius: 2px; transition: width 0.3s ease; }
+
+    .step-body { max-width: 520px; margin: 52px auto 48px; padding: 0 24px; }
+    .step-eyebrow { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.7px; color: var(--text); margin-bottom: 10px; }
+    .step-q    { font-size: 28px; font-weight: 700; color: var(--headline); line-height: 1.25; margin-bottom: 8px; }
+    .step-hint { font-size: 14px; color: #aaa; margin-bottom: 28px; line-height: 1.5; }
+
+    .field-row  { margin-bottom: 12px; }
+    .field-lbl  { font-size: 12px; font-weight: 600; color: var(--text); margin-bottom: 5px; }
+    .input-wrap { position: relative; }
+    .input-pfx  { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: #aaa; font-size: 14px; pointer-events: none; }
+    .two-col    { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+    #wizard input[type="text"],
+    #wizard input[type="number"],
+    #wizard input[type="date"],
+    #wizard textarea {
+      width: 100%; border: 2px solid var(--border); border-radius: 8px;
+      padding: 12px 14px; font-size: 16px; background: white;
+      outline: none; transition: border-color 0.15s; font-family: inherit;
+    }
+    #wizard input.pfx { padding-left: 28px; }
+    #wizard input:focus, #wizard textarea:focus { border-color: var(--accent); }
+    #wizard textarea { min-height: 80px; resize: vertical; font-size: 14px; padding: 12px; }
+
+    .calc-box {
+      margin-top: 12px; background: white; border: 1px solid var(--border);
+      border-radius: 8px; padding: 12px 16px; font-size: 13px; color: var(--text); display: none;
+    }
+    .calc-box strong { color: var(--headline); }
+
+    .wiz-actions { margin-top: 26px; display: flex; flex-direction: column; }
+    .btn-next {
+      background: var(--headline); color: white; border: none;
+      padding: 13px 28px; border-radius: 8px; font-size: 15px; font-weight: 600;
+      cursor: pointer; align-self: flex-start;
+    }
+    .btn-next:hover { background: #4a4b16; }
+    .btn-back { background: none; border: none; font-size: 13px; color: var(--text); cursor: pointer; margin-bottom: 10px; padding: 0; align-self: flex-start; }
+    .btn-back:hover { color: var(--headline); }
+    .btn-skip { background: none; border: none; font-size: 13px; color: #bbb; cursor: pointer; margin-top: 10px; padding: 0; align-self: flex-start; }
+    .btn-skip:hover { color: #888; }
+    .btn-log-month {
+      background: white; color: var(--headline); border: 1.5px solid var(--headline);
+      padding: 9px 16px; border-radius: 7px; font-size: 13px; font-weight: 600; cursor: pointer; margin-left: 8px;
+    }
+    .btn-log-month:hover { background: #f5f3ec; }
+    .monthly-badge {
+      display: inline-block; font-size: 11px; background: var(--accent); color: white;
+      border-radius: 4px; padding: 2px 7px; margin-left: 8px; vertical-align: middle; font-weight: 600;
+    }
+    .roster-section { margin-top: 16px; }
+    .roster-search { width: 100%; padding: 9px 12px; border: 1px solid var(--border); border-radius: 7px; font-size: 13px; margin-bottom: 8px; outline: none; font-family: inherit; }
+    .roster-search:focus { border-color: var(--accent); }
+    .roster-member-row { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; border-top: 1px solid #f2f0ea; font-size: 13px; }
+    .roster-member-row:first-child { border-top: none; }
+    .roster-del-btn { background: none; border: none; color: #bbb; cursor: pointer; font-size: 13px; padding: 0 4px; flex-shrink: 0; }
+    .roster-del-btn:hover { color: var(--terracotta); }
+
+    /* Settings + export topbar buttons */
+    .btn-icon {
+      background: white; color: var(--text); border: 1.5px solid var(--border);
+      padding: 8px 12px; border-radius: 7px; font-size: 13px; font-weight: 600; cursor: pointer; margin-left: 6px;
+    }
+    .btn-icon:hover { background: #f5f3ec; border-color: var(--headline); color: var(--headline); }
+    .topbar-right { display: flex; align-items: center; }
+
+    /* Settings / sync modal */
+    .modal-overlay {
+      display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.35);
+      z-index: 100; align-items: center; justify-content: center;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal-box {
+      background: white; border-radius: 12px; padding: 28px 28px 24px;
+      max-width: 480px; width: 92%; box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+    }
+    .modal-title { font-size: 16px; font-weight: 700; color: var(--headline); margin-bottom: 6px; }
+    .modal-sub { font-size: 13px; color: var(--text); margin-bottom: 20px; line-height: 1.5; }
+    .modal-label { font-size: 12px; font-weight: 600; color: var(--text); margin-bottom: 5px; text-transform: uppercase; letter-spacing: 0.4px; }
+    .modal-input {
+      width: 100%; padding: 10px 12px; border: 1.5px solid var(--border);
+      border-radius: 7px; font-size: 13px; outline: none; font-family: inherit; margin-bottom: 14px;
+    }
+    .modal-input:focus { border-color: var(--headline); }
+    .modal-actions { display: flex; gap: 10px; justify-content: flex-end; }
+    .btn-modal-save { background: var(--headline); color: white; border: none; padding: 9px 20px; border-radius: 7px; font-size: 13px; font-weight: 600; cursor: pointer; }
+    .btn-modal-save:hover { background: #4a4b16; }
+    .btn-modal-cancel { background: none; color: var(--text); border: 1.5px solid var(--border); padding: 9px 16px; border-radius: 7px; font-size: 13px; font-weight: 600; cursor: pointer; }
+    .btn-modal-cancel:hover { background: #f5f3ec; }
+    .sync-status { font-size: 11px; margin-top: 8px; min-height: 16px; }
+    .sync-ok  { color: #3a8a4a; }
+    .sync-err { color: var(--terracotta); }
+
+    /* Revenue step */
+    .csv-zone { margin-bottom: 16px; }
+    .csv-drop {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      border: 2px dashed var(--border); border-radius: 10px; padding: 24px 16px;
+      cursor: pointer; background: white; transition: border-color 0.15s; text-align: center;
+      gap: 4px;
+    }
+    .csv-drop:hover { border-color: var(--accent); background: #f9fefe; }
+    .csv-drop-icon  { font-size: 24px; margin-bottom: 4px; }
+    .csv-drop-main  { font-size: 14px; font-weight: 600; color: var(--headline); }
+    .csv-drop-sub   { font-size: 12px; color: #aaa; }
+    .csv-results {
+      display: none; background: white; border: 1px solid var(--border);
+      border-radius: 10px; padding: 16px; margin-bottom: 16px;
+    }
+    .csv-bk-row {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 6px 0; font-size: 13px; border-bottom: 1px solid #f2f0ea;
+    }
+    .csv-bk-row:last-child { border-bottom: none; }
+    .csv-bk-row.total { font-weight: 700; color: var(--headline); padding-top: 10px; margin-top: 4px; border-top: 2px solid var(--border); border-bottom: none; }
+    .csv-bk-row.excluded { color: #bbb; font-size: 12px; }
+    .csv-bk-row.sub { padding: 3px 0 3px 14px; font-size: 12px; color: #999; border-bottom: none; }
+    .csv-bk-row.sub span:first-child { font-style: italic; }
+    .csv-date-note { font-size: 11px; color: #bbb; margin-top: 8px; }
+    .btn-apply-csv {
+      display: block; width: 100%; margin-top: 12px;
+      background: var(--accent); color: white; border: none;
+      padding: 10px; border-radius: 7px; font-size: 13px; font-weight: 600; cursor: pointer;
+    }
+    .btn-apply-csv:hover { background: #7aa8ae; }
+    .or-divider { text-align: center; font-size: 12px; color: #bbb; margin: 16px 0 14px; position: relative; }
+    .or-divider::before, .or-divider::after {
+      content: ''; position: absolute; top: 50%; width: 44%; height: 1px; background: var(--border);
+    }
+    .or-divider::before { left: 0; }
+    .or-divider::after  { right: 0; }
+    .rev-fields { display: flex; flex-direction: column; gap: 10px; }
+    .rev-field-row { display: grid; grid-template-columns: 140px 1fr; align-items: center; gap: 10px; }
+    .rev-field-lbl { font-size: 13px; color: #666; }
+    .rev-total-line { font-size: 14px; font-weight: 700; color: var(--headline); text-align: right; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+
+    /* Tier step */
+    .tier-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .tier-card { background: white; border: 2px solid var(--border); border-radius: 10px; padding: 14px; }
+    .tier-card-name  { font-size: 13px; font-weight: 700; color: var(--headline); margin-bottom: 2px; }
+    .tier-card-price { font-size: 11px; color: #aaa; margin-bottom: 10px; }
+    .tier-card input {
+      width: 100%; border: 1px solid var(--border); border-radius: 6px;
+      padding: 9px 12px; font-size: 16px; background: #fafafa;
+      outline: none; font-family: inherit;
+    }
+    .tier-card input:focus { border-color: var(--accent); background: white; }
+
+    /* Review */
+    .review-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 20px; }
+    .review-row { display: flex; justify-content: space-between; align-items: center; background: white; border: 1px solid var(--border); border-radius: 6px; padding: 9px 13px; }
+    .rr-label { font-size: 13px; color: #666; }
+    .rr-val   { font-size: 14px; font-weight: 700; color: var(--headline); display: flex; align-items: center; gap: 5px; }
+    .btn-save { background: var(--green); color: white; border: none; padding: 13px 0; border-radius: 8px; font-size: 15px; font-weight: 700; cursor: pointer; width: 100%; }
+    .btn-save:hover { background: #2d6d3a; }
+
+    /* Month override toggle */
+    .month-toggle { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+    .month-toggle-btn {
+      padding: 8px 16px; border-radius: 7px; border: 2px solid var(--border);
+      background: white; font-size: 14px; font-weight: 600; cursor: pointer;
+      color: var(--text); transition: all 0.15s;
+    }
+    .month-toggle-btn.active {
+      border-color: var(--headline); background: var(--headline); color: white;
+    }
+    .month-toggle-btn:hover:not(.active) { border-color: var(--accent); }
+    .month-badge {
+      display: inline-block; font-size: 10px; font-weight: 400; color: #aaa;
+      background: #f5f3ec; border-radius: 3px; padding: 1px 4px; margin-left: 4px; vertical-align: middle;
+    }
+  </style>
+</head>
+<body>
+
+<div class="topbar">
+  <div>
+    <div class="topbar-title">Throw Art Studio</div>
+    <div class="topbar-sub">Weekly KPI Tracker</div>
+  </div>
+  <div class="topbar-right">
+    <button class="btn-log" onclick="openWizard()">+ Log This Week</button>
+    <button class="btn-log-month" onclick="openMonthWizard()">+ Log This Month</button>
+    <button class="btn-icon" onclick="exportBackup()" title="Export JSON backup">&#8659; Backup</button>
+    <button class="btn-icon" onclick="openSettings()" title="Google Sheets sync settings">&#9881; Sync</button>
+  </div>
+</div>
+
+<!-- Settings / Google Sheets sync modal -->
+<div class="modal-overlay" id="settingsModal" onclick="if(event.target===this)closeSettings()">
+  <div class="modal-box">
+    <div class="modal-title">Google Sheets Sync</div>
+    <div class="modal-sub">
+      Paste your deployed Apps Script web app URL below. KPI data will sync to your Google Sheet on every save, and load from it on startup.<br><br>
+      See <code>tools/sheets-sync.gs</code> for setup instructions.
+    </div>
+    <div class="modal-label">Apps Script Web App URL</div>
+    <input class="modal-input" id="sheetsUrlInput" type="url" placeholder="https://script.google.com/macros/s/..." />
+    <div class="sync-status" id="syncStatus"></div>
+    <div class="modal-actions">
+      <button class="btn-modal-cancel" onclick="closeSettings()">Cancel</button>
+      <button class="btn-modal-save" onclick="saveSettings()">Save</button>
+    </div>
+  </div>
+</div>
+
+<div class="dash">
+  <div class="month-nav">
+    <button onclick="prevMonth()">&#8249;</button>
+    <div class="month-label" id="monthLabel"></div>
+    <button onclick="nextMonth()">&#8250;</button>
+  </div>
+  <div class="cards" id="monthlyCards"></div>
+  <div class="section-label">Weekly Breakdown</div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Week Ending</th>
+          <th>Revenue</th>
+          <th>CAC</th>
+          <th>New Members</th>
+          <th>New 1x Class</th>
+          <th>Active Mbrs</th>
+          <th>Class Occ</th>
+          <th>Kickstart</th>
+          <th>NPS</th>
+          <th>Kilns</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="weeklyRows"></tbody>
+    </table>
+    <div class="empty" id="emptyState" style="display:none">
+      <p>No data for this month yet.</p>
+      <button class="btn-log-empty" onclick="openWizard()">Log This Week</button>
+    </div>
+  </div>
+
+  <div class="mbr-section" id="mbrSection" style="display:none">
+    <div class="section-label" style="margin-top:0">Membership Breakdown</div>
+    <div class="mbr-table-wrap" id="mbrBreakdown"></div>
+  </div>
+
+  <div class="mbr-section" id="churnSection" style="display:none"></div>
+</div>
+
+<div id="wizard">
+  <div class="wiz-bar">
+    <div class="wiz-step-label" id="wizStepLabel"></div>
+    <button class="wiz-close" onclick="closeWizard()">&#x2715;</button>
+  </div>
+  <div class="progress-track">
+    <div class="progress-fill" id="progressFill"></div>
+  </div>
+  <div class="step-body" id="stepBody"></div>
+</div>
+
+<script>
+// ── Constants ─────────────────────────────────────────────────────────────────
+const TIER_PRICES = { basic: 49.99, student: 59.99, pro: 89.99, expert: 159.99 };
+
+const PLAN_VARIANTS = [
+  { key: 'planBasicMonthly',  label: 'Basic Monthly',   mrr: 50.00,  note: 'billed monthly'          },
+  { key: 'planBasic3Month',   label: 'Basic 3-Month',   mrr: 50.00,  note: '12-week prepay ($150)'   },
+  { key: 'planBasicAnnual',   label: 'Basic Annual',    mrr: null,   note: 'annual -- update price when confirmed' },
+  { key: 'planProMonthly',    label: 'Pro Monthly',     mrr: 90.00,  note: 'billed monthly'          },
+  { key: 'planPro3Month',     label: 'Pro 3-Month',     mrr: 90.00,  note: '12-week prepay'          },
+  { key: 'planProAnnual',     label: 'Pro Annual',      mrr: null,   note: 'annual -- update price when confirmed' },
+  { key: 'planExpertMonthly', label: 'Expert Monthly',  mrr: 160.00, note: 'billed monthly'          },
+  { key: 'planExpert3Month',  label: 'Expert 3-Month',  mrr: 160.00, note: '12-week prepay'          },
+  { key: 'planExpertAnnual',  label: 'Expert Annual',   mrr: null,   note: 'annual -- update price when confirmed' },
+];
+
+const GOALS = {
+  activeMembers: 250, newMembers: 18, newOneTimeClass: 130,
+  classOccupancy: 50, kickstartOccupancy: 100,
+  nps: 95, kilnsFired: 20, churn: 7, mrr: 10000, cac: 15,
+};
+
+const STORAGE_KEY    = 'tas_kpi_v2';
+const STORAGE_KEY_V1 = 'tas_kpi_v1';
+
+// ── Storage ───────────────────────────────────────────────────────────────────
+function migrateStorage() {
+  const v1 = localStorage.getItem(STORAGE_KEY_V1);
+  const v2 = localStorage.getItem(STORAGE_KEY);
+  if (!v1 || v2) return;
+  try {
+    const old = JSON.parse(v1);
+    const migrated = {
+      weeks: (old.weeks || []).map(w => ({ ...w, monthOverride: null })),
+      months: old.months || [],
+      rosterSnapshots: {},
+    };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated));
+  } catch (e) { console.warn('KPI migration failed:', e); }
+}
+
+function load() {
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '{"weeks":[],"months":[],"rosterSnapshots":{}}'); }
+  catch { return { weeks: [], months: [], rosterSnapshots: {} }; }
+}
+function save(d) { localStorage.setItem(STORAGE_KEY, JSON.stringify(d)); }
+
+// ── Membership helpers ────────────────────────────────────────────────────────
+function hasTiers(entry) {
+  return entry.membersBasic != null || entry.membersStudent != null ||
+         entry.membersPro  != null || entry.membersExpert  != null;
+}
+
+function hasPlans(entry) {
+  return PLAN_VARIANTS.some(p => entry[p.key] != null);
+}
+
+function calcMRR(entry) {
+  if (hasPlans(entry)) {
+    return PLAN_VARIANTS.reduce((sum, p) => {
+      if (p.mrr === null) return sum;
+      return sum + (entry[p.key] || 0) * p.mrr;
+    }, 0);
+  }
+  if (hasTiers(entry)) {
+    return (entry.membersBasic   || 0) * TIER_PRICES.basic   +
+           (entry.membersStudent || 0) * TIER_PRICES.student +
+           (entry.membersPro     || 0) * TIER_PRICES.pro     +
+           (entry.membersExpert  || 0) * TIER_PRICES.expert;
+  }
+  return entry.activeMembers ? entry.activeMembers * 75 : null;
+}
+
+function getActiveMembers(entry) {
+  if (hasPlans(entry)) {
+    return PLAN_VARIANTS.reduce((sum, p) => sum + (entry[p.key] || 0), 0);
+  }
+  if (hasTiers(entry)) {
+    return (entry.membersBasic   || 0) + (entry.membersStudent || 0) +
+           (entry.membersPro     || 0) + (entry.membersExpert  || 0);
+  }
+  return entry.activeMembers || null;
+}
+
+function mrrIsEstimated(entry) { return !hasPlans(entry) && !hasTiers(entry) && !!entry.activeMembers; }
+
+function calcTenure(sinceStr) {
+  if (!sinceStr) return null;
+  const d = new Date(sinceStr);
+  if (isNaN(d.getTime())) return null;
+  const now = new Date();
+  return Math.max(0, (now.getFullYear() - d.getFullYear()) * 12 + (now.getMonth() - d.getMonth()));
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function parseNPS(raw) {
+  if (!raw || !raw.trim()) return null;
+  const t = raw.trim();
+  if (/^-?\d+(\.\d+)?$/.test(t)) return parseFloat(t);
+  const scores = t.split(/[\s,]+/).map(Number).filter(n => !isNaN(n) && n >= 0 && n <= 10);
+  if (!scores.length) return null;
+  const p = scores.filter(s => s >= 9).length;
+  const d = scores.filter(s => s <= 6).length;
+  return Math.round(((p - d) / scores.length) * 100);
+}
+
+function calcCAC(spend, nm, nc) {
+  const total = (nm || 0) + (nc || 0);
+  if (!spend || !total) return null;
+  return spend / total;
+}
+
+function calcOcc(booked, avail) {
+  if (!avail) return null;
+  return (booked / avail) * 100;
+}
+
+function monthKey(dateStr) { return dateStr.substring(0, 7); }
+
+function getWeeksForMonth(mk) {
+  return load().weeks
+    .filter(w => (w.monthOverride || monthKey(w.weekEnding)) === mk)
+    .sort((a, b) => a.weekEnding.localeCompare(b.weekEnding));
+}
+
+function calcMonthlyChurn(weeks) {
+  const data = load();
+  const snaps = data.rosterSnapshots || {};
+  if (!Object.keys(snaps).length) return { churn: null, churnExact: false, churned: [], newJoins: [] };
+
+  // Find the last week of this month with a roster snapshot
+  const weeksWithSnap = weeks.filter(w => snaps[w.weekEnding]);
+  if (!weeksWithSnap.length) return { churn: null, churnExact: false, churned: [], newJoins: [] };
+
+  const lastWithSnap = weeksWithSnap[weeksWithSnap.length - 1];
+  const currSnap     = snaps[lastWithSnap.weekEnding];
+
+  // Find the most recent snapshot from before this month
+  const firstWeekEnding = weeks[0].weekEnding;
+  const priorEntry = Object.entries(snaps)
+    .filter(([we]) => we < firstWeekEnding)
+    .sort(([a], [b]) => b.localeCompare(a))[0];
+
+  if (!priorEntry) return { churn: null, churnExact: false, churned: [], newJoins: [] };
+  const prevSnap = priorEntry[1];
+
+  const identity = m => (m.email && m.email.includes('@')) ? m.email.toLowerCase() : m.name.toLowerCase();
+  const prevSet  = new Map(prevSnap.members.map(m => [identity(m), m]));
+  const currSet  = new Map(currSnap.members.map(m => [identity(m), m]));
+
+  const churned  = [...prevSet.entries()].filter(([k]) => !currSet.has(k)).map(([, m]) => m);
+  const newJoins = [...currSet.entries()].filter(([k]) => !prevSet.has(k)).map(([, m]) => m);
+  const churnRate = prevSet.size > 0 ? (churned.length / prevSet.size) * 100 : 0;
+
+  return { churn: churnRate, churnExact: true, churned, newJoins };
+}
+
+function aggregateMonth(weeks) {
+  if (!weeks.length) return null;
+  const first = weeks[0], last = weeks[weeks.length - 1];
+  const totalRev    = weeks.reduce((s, w) => s + (w.revenue || 0), 0);
+  const totalSpend  = weeks.reduce((s, w) => s + (w.adSpend || 0), 0);
+  const totalNM     = weeks.reduce((s, w) => s + (w.newMembers || 0), 0);
+  const totalNC     = weeks.reduce((s, w) => s + (w.newOneTimeClass || 0), 0);
+  const totalKilns  = weeks.reduce((s, w) => s + (w.kilnsFired || 0), 0);
+  const totalCB     = weeks.reduce((s, w) => s + (w.classBooked || 0), 0);
+  const totalCA     = weeks.reduce((s, w) => s + (w.classAvailable || 0), 0);
+  const totalRevMbr = weeks.reduce((s, w) => s + (w.revMembership || 0), 0);
+  const totalRevCls = weeks.reduce((s, w) => s + (w.revClasses || 0), 0);
+  const hasRevBreak = weeks.some(w => w.revMembership || w.revClasses);
+
+  const activeMembers = getActiveMembers(last);
+  const mrr           = calcMRR(last);
+  const mrrEst        = mrrIsEstimated(last);
+
+  const npsArr  = weeks.map(w => parseNPS(w.npsRaw)).filter(n => n !== null);
+  const avgNPS  = npsArr.length ? Math.round(npsArr.reduce((a, b) => a + b, 0) / npsArr.length) : null;
+  const classOc = calcOcc(totalCB, totalCA);
+  const cac     = calcCAC(totalSpend, totalNM, totalNC);
+
+  // Try roster-based churn first; fall back to aggregate formula
+  const monthlyChurn = calcMonthlyChurn(weeks);
+  let churn = monthlyChurn.churn, churnExact = monthlyChurn.churnExact;
+  const churned = monthlyChurn.churned, newJoins = monthlyChurn.newJoins;
+  if (churn === null && weeks.length > 1) {
+    const startAM = getActiveMembers(first);
+    const endAM   = getActiveMembers(last);
+    if (startAM && endAM) {
+      const lost = startAM + totalNM - endAM;
+      churn = Math.max(0, (lost / startAM) * 100);
+    }
+  }
+  return { totalRev, totalNM, totalNC, activeMembers, mrr, mrrEst, avgNPS, totalKilns, churn, churnExact,
+           churned, newJoins, cac, classOc, totalRevMbr, totalRevCls, hasRevBreak };
+}
+
+// ── Status ────────────────────────────────────────────────────────────────────
+function statusOf(val, goal, dir = 'high') {
+  if (val === null || val === undefined) return 'grey';
+  if (dir === 'high') {
+    if (val >= goal) return 'green';
+    if (val >= goal * 0.9) return 'amber';
+    return 'red';
+  } else {
+    if (val <= goal) return 'green';
+    if (val <= goal * 1.1) return 'amber';
+    return 'red';
+  }
+}
+function dot(s) { return `<span class="dot dot-${s}"></span>`; }
+function cls(s) { return s === 'green' ? 'good' : s === 'amber' ? 'ok' : s === 'red' ? 'bad' : 'na'; }
+
+// ── Format ────────────────────────────────────────────────────────────────────
+function f$(n) {
+  if (n === null || n === undefined) return '--';
+  return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+}
+function fPct(n) { return (n === null || n === undefined) ? '--' : n.toFixed(1) + '%'; }
+function fNum(n) { return (n === null || n === undefined) ? '--' : String(n); }
+function fDate(s) {
+  if (!s) return '--';
+  const [y, m, d] = s.split('-');
+  return `${parseInt(m)}/${parseInt(d)}/${y}`;
+}
+
+// ── Month nav ─────────────────────────────────────────────────────────────────
+let currentMK = null;
+
+function initDash() {
+  const t = new Date();
+  currentMK = `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}`;
+  renderDash();
+}
+function prevMonth() {
+  const [y, m] = currentMK.split('-').map(Number);
+  const d = new Date(y, m - 2, 1);
+  currentMK = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  renderDash();
+}
+function nextMonth() {
+  const [y, m] = currentMK.split('-').map(Number);
+  const d = new Date(y, m, 1);
+  currentMK = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  renderDash();
+}
+function fmtMonth(mk) {
+  const [y, m] = mk.split('-').map(Number);
+  return new Date(y, m - 1, 1).toLocaleString('en-US', { month: 'long', year: 'numeric' });
+}
+function fmtMonthShort(mk) {
+  const [y, m] = mk.split('-').map(Number);
+  return new Date(y, m - 1, 1).toLocaleString('en-US', { month: 'short' });
+}
+
+// ── Render dashboard ──────────────────────────────────────────────────────────
+function getMonthEntry(mk) {
+  const data = load();
+  return (data.months || []).find(m => m.monthKey === mk) || null;
+}
+
+function renderDash() {
+  document.getElementById('monthLabel').textContent = fmtMonth(currentMK);
+  const weeks = getWeeksForMonth(currentMK);
+  if (weeks.length > 0) {
+    renderCards(weeks);
+    renderTable(weeks);
+    renderMbrBreakdown(weeks);
+    renderChurnDetail(weeks);
+  } else {
+    const monthly = getMonthEntry(currentMK);
+    if (monthly) {
+      renderCardsFromMonth(monthly);
+      renderTableFromMonth(monthly);
+      renderMbrBreakdown([monthly]);
+      renderChurnDetail([]);
+    } else {
+      renderCards([]);
+      renderTable([]);
+      renderMbrBreakdown([]);
+      renderChurnDetail([]);
+    }
+  }
+}
+
+function renderCardsFromMonth(m) {
+  const el = document.getElementById('monthlyCards');
+  const mrr     = calcMRR(m);
+  const mrrEst  = mrrIsEstimated(m);
+  const active  = getActiveMembers(m);
+  const cac     = calcCAC(m.adSpend, m.newMembers, m.newOneTimeClass);
+  const nps     = parseNPS(m.npsRaw);
+  const hasRevB = m.revMembership || m.revClasses;
+  const revSub  = hasRevB ? `${f$(m.revMembership)} mbr &middot; ${f$(m.revClasses)} class` : null;
+  const mrrLabel = mrrEst ? 'MRR (est)' : 'MRR';
+  const cards = [
+    { label: 'Total Revenue',  val: f$(m.revenue),   sub: revSub,  goal: null, s: null },
+    { label: mrrLabel,         val: f$(mrr),          sub: null,    goal: `Goal: ${f$(GOALS.mrr)}`, s: statusOf(mrr, GOALS.mrr) },
+    { label: 'Active Members', val: fNum(active),     sub: null,    goal: `Goal: ${GOALS.activeMembers}`, s: statusOf(active, GOALS.activeMembers) },
+    { label: 'New Members',    val: fNum(m.newMembers), sub: null,  goal: `Goal: ${GOALS.newMembers}/mo`, s: statusOf(m.newMembers, GOALS.newMembers) },
+    { label: 'New 1x Class',   val: fNum(m.newOneTimeClass), sub: null, goal: `Goal: ${GOALS.newOneTimeClass}/mo`, s: statusOf(m.newOneTimeClass, GOALS.newOneTimeClass) },
+    { label: 'Blended CAC',    val: cac !== null ? f$(cac) : '--', sub: null, goal: `Goal: under ${f$(GOALS.cac)}`, s: statusOf(cac, GOALS.cac, 'low') },
+    { label: 'Avg NPS',        val: nps !== null ? String(nps) : '--', sub: null, goal: `Goal: ${GOALS.nps}`, s: statusOf(nps, GOALS.nps) },
+    { label: 'Kilns Fired',    val: fNum(m.kilnsFired), sub: null,  goal: `Goal: ${GOALS.kilnsFired}/mo`, s: statusOf(m.kilnsFired, GOALS.kilnsFired) },
+  ];
+  el.innerHTML = `<div style="grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+    <span style="font-size:12px;color:var(--accent);font-weight:700">&#9646; Monthly Summary</span>
+    <div>
+      <button onclick="openMonthWizard('${m.monthKey}')" style="background:none;border:none;font-size:12px;color:var(--text);cursor:pointer;margin-right:12px">&#9998; Edit</button>
+      <button onclick="deleteMonth('${m.monthKey}')" style="background:none;border:none;font-size:12px;color:#bbb;cursor:pointer">&#x2715; Delete</button>
+    </div>
+  </div>` + cards.map(c => `
+    <div class="card">
+      <div class="card-label">${c.s ? dot(c.s) : ''}${c.label}</div>
+      <div class="card-val">${c.val}</div>
+      ${c.sub  ? `<div class="card-sub">${c.sub}</div>`   : ''}
+      ${c.goal ? `<div class="card-goal">${c.goal}</div>` : ''}
+    </div>
+  `).join('');
+}
+
+function renderTableFromMonth(m) {
+  const tbody = document.getElementById('weeklyRows');
+  const empty = document.getElementById('emptyState');
+  empty.style.display = 'none';
+  const cac    = calcCAC(m.adSpend, m.newMembers, m.newOneTimeClass);
+  const active = getActiveMembers(m);
+  const nps    = parseNPS(m.npsRaw);
+  const mrr    = calcMRR(m);
+  tbody.innerHTML = `<tr>
+    <td class="td-date" colspan="10" style="font-style:italic;color:var(--text)">
+      <span class="monthly-badge" style="margin-right:8px">Monthly</span>
+      ${fmtMonth(m.monthKey)} summary &nbsp;
+      <span style="font-size:12px;color:#bbb">No weekly breakdown. <button onclick="openMonthWizard('${m.monthKey}')" style="background:none;border:none;font-size:12px;color:var(--accent);cursor:pointer;text-decoration:underline">Edit</button></span>
+    </td>
+    <td style="white-space:nowrap">
+      <button class="del-btn" onclick="deleteMonth('${m.monthKey}')" title="Delete">&#x2715;</button>
+    </td>
+  </tr>
+  <tr>
+    <td class="td-date">${fmtMonth(m.monthKey)}</td>
+    <td class="td-rev">${f$(m.revenue)}</td>
+    <td class="${cls(statusOf(cac, GOALS.cac, 'low'))}">${cac !== null ? f$(cac) : '<span class="na">--</span>'}</td>
+    <td>${fNum(m.newMembers)}</td>
+    <td>${fNum(m.newOneTimeClass)}</td>
+    <td class="${cls(statusOf(active, GOALS.activeMembers))}">${fNum(active)}</td>
+    <td class="na">--</td>
+    <td class="na">--</td>
+    <td class="${cls(statusOf(nps, GOALS.nps))}">${nps !== null ? nps : '<span class="na">--</span>'}</td>
+    <td>${fNum(m.kilnsFired)}</td>
+    <td></td>
+  </tr>`;
+}
+
+function renderCards(weeks) {
+  const el = document.getElementById('monthlyCards');
+  const a  = aggregateMonth(weeks);
+  if (!a) {
+    el.innerHTML = `<div class="card" style="grid-column:1/-1;text-align:center;padding:28px;color:#bbb;font-size:14px">
+      No data for this month yet. Click <strong>+ Log This Week</strong> to get started.
+    </div>`;
+    return;
+  }
+
+  const revSubLine = a.hasRevBreak
+    ? `${f$(a.totalRevMbr)} mbr &middot; ${f$(a.totalRevCls)} class`
+    : null;
+  const mrrLabel = a.mrrEst ? 'MRR (est)' : 'MRR';
+
+  const cards = [
+    { label: 'Total Revenue',  val: f$(a.totalRev),     sub: revSubLine, goal: null, s: null },
+    { label: mrrLabel,         val: f$(a.mrr),           sub: null, goal: `Goal: ${f$(GOALS.mrr)}`, s: statusOf(a.mrr, GOALS.mrr) },
+    { label: 'Active Members', val: fNum(a.activeMembers), sub: null, goal: `Goal: ${GOALS.activeMembers}`, s: statusOf(a.activeMembers, GOALS.activeMembers) },
+    { label: 'New Members',    val: fNum(a.totalNM),     sub: null, goal: `Goal: ${GOALS.newMembers}/mo`, s: statusOf(a.totalNM, GOALS.newMembers) },
+    { label: 'New 1x Class',   val: fNum(a.totalNC),     sub: null, goal: `Goal: ${GOALS.newOneTimeClass}/mo`, s: statusOf(a.totalNC, GOALS.newOneTimeClass) },
+    { label: 'Blended CAC',    val: a.cac !== null ? f$(a.cac) : '--', sub: null, goal: `Goal: under ${f$(GOALS.cac)}`, s: statusOf(a.cac, GOALS.cac, 'low') },
+    { label: 'Monthly Churn',  val: a.churn !== null ? fPct(a.churn) : '--', sub: a.churnExact ? 'exact' : (a.churn !== null ? 'est.' : null), goal: `Goal: under ${GOALS.churn}%`, s: statusOf(a.churn, GOALS.churn, 'low') },
+    { label: 'Avg NPS',        val: a.avgNPS !== null ? String(a.avgNPS) : '--', sub: null, goal: `Goal: ${GOALS.nps}`, s: statusOf(a.avgNPS, GOALS.nps) },
+  ];
+
+  el.innerHTML = cards.map(c => `
+    <div class="card">
+      <div class="card-label">${c.s ? dot(c.s) : ''}${c.label}</div>
+      <div class="card-val">${c.val}</div>
+      ${c.sub  ? `<div class="card-sub">${c.sub}</div>`   : ''}
+      ${c.goal ? `<div class="card-goal">${c.goal}</div>` : ''}
+    </div>
+  `).join('');
+}
+
+function renderTable(weeks) {
+  const tbody = document.getElementById('weeklyRows');
+  const empty = document.getElementById('emptyState');
+  if (!weeks.length) { tbody.innerHTML = ''; empty.style.display = 'block'; return; }
+  empty.style.display = 'none';
+
+  tbody.innerHTML = [...weeks].reverse().map(w => {
+    const cac    = calcCAC(w.adSpend, w.newMembers, w.newOneTimeClass);
+    const classOc = calcOcc(w.classBooked, w.classAvailable);
+    const ksOc    = calcOcc(w.kickstartBooked, w.kickstartAvailable);
+    const nps     = parseNPS(w.npsRaw);
+    const active  = getActiveMembers(w);
+    const crossBadge = (w.monthOverride && w.monthOverride !== monthKey(w.weekEnding))
+      ? `<span class="month-badge">${fmtMonthShort(monthKey(w.weekEnding))}</span>` : '';
+    return `<tr>
+      <td class="td-date">${fDate(w.weekEnding)}${crossBadge}</td>
+      <td class="td-rev">${f$(w.revenue)}</td>
+      <td class="${cls(statusOf(cac, GOALS.cac, 'low'))}">${cac !== null ? f$(cac) : '<span class="na">--</span>'}</td>
+      <td>${fNum(w.newMembers)}</td>
+      <td>${fNum(w.newOneTimeClass)}</td>
+      <td class="${cls(statusOf(active, GOALS.activeMembers))}">${fNum(active)}</td>
+      <td class="${cls(statusOf(classOc, GOALS.classOccupancy))}">${classOc !== null ? fPct(classOc) : '<span class="na">--</span>'}</td>
+      <td class="${cls(statusOf(ksOc, GOALS.kickstartOccupancy))}">${ksOc !== null ? fPct(ksOc) : '<span class="na">--</span>'}</td>
+      <td class="${cls(statusOf(nps, GOALS.nps))}">${nps !== null ? nps : '<span class="na">--</span>'}</td>
+      <td>${fNum(w.kilnsFired)}</td>
+      <td style="white-space:nowrap">
+        <button class="edit-btn" onclick="editWeek('${w.weekEnding}')" title="Edit">&#9998;</button>
+        <button class="del-btn"  onclick="deleteWeek('${w.weekEnding}')" title="Delete">&#x2715;</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function renderMbrBreakdown(weeks) {
+  const section = document.getElementById('mbrSection');
+  const el      = document.getElementById('mbrBreakdown');
+  if (!weeks.length) { section.style.display = 'none'; return; }
+
+  const last = weeks[weeks.length - 1];
+  if (!hasPlans(last) && !hasTiers(last)) { section.style.display = 'none'; return; }
+
+  section.style.display = 'block';
+  const totalActive = getActiveMembers(last);
+  const totalMRR    = calcMRR(last);
+
+  let rows = '';
+  if (hasPlans(last)) {
+    rows = PLAN_VARIANTS.map(p => {
+      const count = last[p.key] || 0;
+      if (!count) return '';
+      const mrrAmt = p.mrr !== null ? count * p.mrr : null;
+      return `<div class="mbr-tier-row">
+        <span class="mbr-tier-name">${p.label} <span style="color:#ccc;font-size:11px">${p.note}</span></span>
+        <span class="mbr-tier-count">${count}</span>
+        <span class="mbr-tier-mrr">${mrrAmt !== null ? f$(mrrAmt) : '<span style="color:#bbb">varies</span>'}</span>
+      </div>`;
+    }).join('');
+  } else {
+    const tiers = [
+      { key: 'basic',   label: 'Basic',   price: TIER_PRICES.basic   },
+      { key: 'student', label: 'Student', price: TIER_PRICES.student },
+      { key: 'pro',     label: 'Pro',     price: TIER_PRICES.pro     },
+      { key: 'expert',  label: 'Expert',  price: TIER_PRICES.expert  },
+    ];
+    rows = tiers.map(t => {
+      const count = last[`members${t.key.charAt(0).toUpperCase() + t.key.slice(1)}`] || 0;
+      if (!count) return '';
+      return `<div class="mbr-tier-row">
+        <span class="mbr-tier-name">${t.label} <span style="color:#ccc;font-size:11px">${f$(t.price)}/mo</span></span>
+        <span class="mbr-tier-count">${count}</span>
+        <span class="mbr-tier-mrr">${f$(count * t.price)}</span>
+      </div>`;
+    }).join('');
+  }
+
+  const editLink = last.weekEnding
+    ? `<button onclick="editWeek('${last.weekEnding}')" style="background:none;border:none;font-size:11px;color:var(--accent);cursor:pointer;font-weight:600;padding:0">&#9998; Edit counts</button>`
+    : '';
+
+  el.innerHTML = `
+    <div class="mbr-tier-row" style="background:#f5f3ec;font-size:11px;color:#888;text-transform:uppercase;letter-spacing:0.4px;font-weight:600;justify-content:space-between">
+      <span>Plan</span>
+      <div style="display:flex;align-items:center;gap:16px">
+        <span>Members</span><span>MRR</span>
+        ${editLink}
+      </div>
+    </div>
+    ${rows}
+    <div class="mbr-tier-row mbr-tier-total">
+      <span>Total</span>
+      <span class="mbr-tier-count">${totalActive}</span>
+      <span class="mbr-tier-mrr">${f$(totalMRR)}</span>
+    </div>
+  `;
+
+  // Roster view
+  renderRosterView(last.weekEnding);
+}
+
+function renderRosterView(weekEnding) {
+  const mbrSection = document.getElementById('mbrSection');
+  let rosterDiv = document.getElementById('rosterView');
+  if (!rosterDiv) {
+    rosterDiv = document.createElement('div');
+    rosterDiv.id = 'rosterView';
+    rosterDiv.className = 'roster-section';
+    mbrSection.appendChild(rosterDiv);
+  }
+
+  if (!weekEnding) { rosterDiv.style.display = 'none'; return; }
+  const snap = getRosterSnapshot(weekEnding);
+  if (!snap || !snap.members.length) { rosterDiv.style.display = 'none'; return; }
+
+  rosterDiv.style.display = 'block';
+  const members = snap.members;
+
+  rosterDiv.innerHTML = `
+    <div class="section-label" style="margin-top:0;cursor:pointer;user-select:none" onclick="toggleRosterView()">
+      Active Roster
+      <span style="font-size:11px;font-weight:400;color:#bbb;margin-left:6px">${members.length} members</span>
+      <span id="rosterToggleIcon" style="float:right;color:#bbb">&#9654;</span>
+    </div>
+    <div id="rosterViewBody" style="display:none" class="mbr-table-wrap">
+      <div style="padding:10px 16px 6px">
+        <input type="text" class="roster-search" id="rosterSearch" placeholder="Search by name or email..." oninput="filterRoster('${weekEnding}')">
+      </div>
+      <div id="rosterMemberList"></div>
+    </div>
+  `;
+  renderRosterMembers(weekEnding, members);
+}
+
+function renderRosterMembers(weekEnding, members) {
+  const list = document.getElementById('rosterMemberList');
+  if (!list) return;
+  const cap = s => s ? s.charAt(0).toUpperCase() + s.slice(1) : '';
+  list.innerHTML = members.map(m => {
+    const identity = encodeURIComponent((m.email && m.email.includes('@')) ? m.email : m.name);
+    return `<div class="roster-member-row">
+      <span style="color:#555">${m.name}</span>
+      <span style="color:#aaa;font-size:12px">${cap(m.tier)}${m.since ? ' &middot; since ' + m.since.substring(0, 10) : ''}</span>
+      <button class="roster-del-btn" onclick="removeMemberFromRoster('${weekEnding}','${identity}')" title="Remove from roster">&#x2715;</button>
+    </div>`;
+  }).join('');
+}
+
+function filterRoster(weekEnding) {
+  const q = (document.getElementById('rosterSearch')?.value || '').toLowerCase();
+  const snap = getRosterSnapshot(weekEnding);
+  if (!snap) return;
+  const filtered = q ? snap.members.filter(m =>
+    m.name.toLowerCase().includes(q) || (m.email || '').toLowerCase().includes(q)
+  ) : snap.members;
+  renderRosterMembers(weekEnding, filtered);
+}
+
+function toggleRosterView() {
+  const body = document.getElementById('rosterViewBody');
+  const icon = document.getElementById('rosterToggleIcon');
+  if (!body) return;
+  const hidden = body.style.display === 'none';
+  body.style.display = hidden ? 'block' : 'none';
+  if (icon) icon.innerHTML = hidden ? '&#9660;' : '&#9654;';
+}
+
+function removeMemberFromRoster(weekEnding, encodedIdentity) {
+  const identity = decodeURIComponent(encodedIdentity);
+  if (!confirm(`Remove "${identity}" from the active roster for this week?`)) return;
+  const data = load();
+  if (!data.rosterSnapshots?.[weekEnding]) return;
+  const snap = data.rosterSnapshots[weekEnding];
+  const getId = m => (m.email && m.email.includes('@')) ? m.email : m.name;
+  snap.members = snap.members.filter(m => getId(m) !== identity);
+  save(data);
+  renderDash();
+}
+
+function renderChurnDetail(weeks) {
+  const section = document.getElementById('churnSection');
+  if (!section) return;
+  const a = aggregateMonth(weeks);
+  if (!a || !a.churnExact || !a.churned || a.churned.length === 0) {
+    section.style.display = 'none'; return;
+  }
+  section.style.display = 'block';
+
+  const mrrImpact  = a.churned.reduce((s, m) => s + (TIER_PRICES[m.tier] || 0), 0);
+  const tenures    = a.churned.map(m => calcTenure(m.since)).filter(t => t !== null);
+  const avgTenure  = tenures.length ? Math.round(tenures.reduce((x, y) => x + y, 0) / tenures.length) : null;
+  const cap        = s => s ? s.charAt(0).toUpperCase() + s.slice(1) : '--';
+
+  section.innerHTML = `
+    <div class="section-label" style="margin-top:0;cursor:pointer;user-select:none" onclick="toggleChurnDetail()">
+      Churn Detail
+      <span style="font-size:11px;font-weight:400;color:#bbb;margin-left:6px">${a.churned.length} cancelled &middot; exact</span>
+      <span id="churnToggleIcon" style="float:right;color:#bbb">&#9660;</span>
+    </div>
+    <div id="churnDetailBody" class="mbr-table-wrap">
+      <div class="mbr-tier-row" style="background:#f5f3ec;font-size:11px;color:#888;text-transform:uppercase;letter-spacing:0.4px;font-weight:600">
+        <span>Name</span><span>Tier</span><span style="text-align:right;min-width:70px">Tenure</span>
+      </div>
+      ${a.churned.map(m => {
+        const tenure = calcTenure(m.since);
+        return `<div class="mbr-tier-row">
+          <span class="mbr-tier-name">${m.name}</span>
+          <span style="color:#888;font-size:12px">${cap(m.tier)}</span>
+          <span style="color:#bbb;font-size:12px;min-width:70px;text-align:right">${tenure !== null ? tenure + ' mo' : '--'}</span>
+        </div>`;
+      }).join('')}
+      <div class="mbr-tier-row mbr-tier-total">
+        <span>MRR Impact</span>
+        <span></span>
+        <span class="mbr-tier-mrr" style="color:var(--terracotta)">-${f$(mrrImpact)}</span>
+      </div>
+      ${avgTenure !== null ? `<div class="mbr-tier-row" style="color:#aaa;font-size:12px">
+        <span>Avg tenure at cancel</span><span></span><span style="min-width:70px;text-align:right">${avgTenure} months</span>
+      </div>` : ''}
+    </div>
+  `;
+}
+
+function toggleChurnDetail() {
+  const body = document.getElementById('churnDetailBody');
+  const icon = document.getElementById('churnToggleIcon');
+  if (!body) return;
+  const hidden = body.style.display === 'none';
+  body.style.display = hidden ? '' : 'none';
+  if (icon) icon.innerHTML = hidden ? '&#9660;' : '&#9654;';
+}
+
+function deleteWeek(we) {
+  if (!confirm(`Delete data for week ending ${fDate(we)}?`)) return;
+  const data = load();
+  data.weeks = data.weeks.filter(w => w.weekEnding !== we);
+  if (data.rosterSnapshots) delete data.rosterSnapshots[we];
+  save(data);
+  renderDash();
+}
+
+// ── Roster CSV ────────────────────────────────────────────────────────────────
+let _pendingRoster = null;
+
+function parseRosterCSV(text) {
+  const rows = parseCSVText(text);
+  if (rows.length < 2) { alert('Roster CSV appears empty.'); return null; }
+
+  const header = rows[0].map(h => h.trim().toLowerCase());
+  const iName  = header.findIndex(h => h === 'name' || h === 'full name' || h === 'customer name' || h === 'customer');
+  const iFirst = header.findIndex(h => h === 'first name' || h === 'first');
+  const iLast  = header.findIndex(h => h === 'last name' || h === 'last');
+  const iEmail = header.findIndex(h => h.includes('email'));
+  const iPlan  = header.findIndex(h => h === 'membership' || h === 'plan' || h === 'plan name' || h === 'membership plan' || h === 'membership type' || h === 'type');
+  const iStart = header.findIndex(h => h.includes('start') || h.includes('join') || h === 'since' || h === 'created');
+  const iStat  = header.findIndex(h => h === 'status' || h === 'membership status');
+
+  const hasName = iName >= 0 || (iFirst >= 0 && iLast >= 0);
+  if (!hasName) { alert('Could not find a name column. Expected "Name", "First Name"/"Last Name", or "Customer Name".'); return null; }
+  if (iPlan < 0) { alert('Could not find a membership plan column. Expected "Membership", "Plan", or "Plan Name".'); return null; }
+
+  const TIER_KEYS = { basic: 'basic', starter: 'basic', student: 'student', pro: 'pro', professional: 'pro', expert: 'expert', master: 'expert', unlimited: 'expert' };
+  function normalizeTier(s) {
+    const lower = (s || '').toLowerCase();
+    for (const [kw, tier] of Object.entries(TIER_KEYS)) { if (lower.includes(kw)) return tier; }
+    return 'other';
+  }
+
+
+  const members = [];
+  for (let i = 1; i < rows.length; i++) {
+    const r = rows[i];
+    if (r.length < 2) continue;
+    if (iStat >= 0) {
+      const st = (r[iStat] || '').trim().toLowerCase();
+      if (st && st !== 'active') continue;
+    }
+    const name = iName >= 0
+      ? (r[iName] || '').trim()
+      : `${(r[iFirst] || '').trim()} ${(r[iLast] || '').trim()}`.trim();
+    if (!name) continue;
+    const email    = iEmail >= 0 ? (r[iEmail] || '').trim().toLowerCase() : '';
+    const rawPlan  = (r[iPlan] || '').trim();
+    const tier     = normalizeTier(rawPlan);
+    const since    = iStart >= 0 ? (r[iStart] || '').trim() : '';
+    members.push({ name, email, tier, planName: rawPlan, since });
+  }
+  return members;
+}
+
+function normalizePlanVariant(planName, tier) {
+  const lp = (planName || '').toLowerCase();
+  if (lp.includes('annual') || lp.includes('yearly')) return 'planAnnual';
+  if (tier === 'basic' || tier === 'student') {
+    if (lp.includes('3') || lp.includes('three') || lp.includes('quarter')) return 'planBasic3Month';
+    return 'planBasicMonthly';
+  }
+  if (tier === 'pro')    return 'planProMonthly';
+  if (tier === 'expert') return 'planExpertMonthly';
+  return null;
+}
+
+function saveRosterSnapshot(weekEnding, members) {
+  const data = load();
+  if (!data.rosterSnapshots) data.rosterSnapshots = {};
+  data.rosterSnapshots[weekEnding] = { uploadedAt: new Date().toISOString(), members };
+  save(data);
+}
+
+function getRosterSnapshot(weekEnding) {
+  return load().rosterSnapshots?.[weekEnding] || null;
+}
+
+function handleRosterDrop(event) {
+  event.preventDefault();
+  const file = event.dataTransfer.files[0];
+  if (file) processRosterFile(file);
+}
+
+function handleRosterCSV(event) {
+  const file = event.target.files[0];
+  if (file) processRosterFile(file);
+}
+
+function processRosterFile(file) {
+  const reader = new FileReader();
+  reader.onload = e => {
+    try { processRosterData(e.target.result); }
+    catch (err) { alert('Could not parse roster CSV: ' + err.message); }
+  };
+  reader.readAsText(file);
+}
+
+function processRosterData(text) {
+  const members = parseRosterCSV(text);
+  if (!members) return;
+  _pendingRoster = members;
+
+  const planCounts = {};
+  PLAN_VARIANTS.forEach(p => { planCounts[p.key] = 0; });
+  let unrecognized = 0;
+  members.forEach(m => {
+    const key = normalizePlanVariant(m.planName, m.tier);
+    if (key) planCounts[key]++;
+    else unrecognized++;
+  });
+
+  const resultEl = document.getElementById('rosterResults');
+  if (!resultEl) return;
+  resultEl.style.display = 'block';
+  resultEl.innerHTML = `
+    ${PLAN_VARIANTS.map(p => planCounts[p.key]
+      ? `<div class="csv-bk-row"><span>${p.label}</span><strong>${planCounts[p.key]}</strong></div>`
+      : '').join('')}
+    ${unrecognized ? `<div class="csv-bk-row"><span>Other / Unrecognized</span><strong>${unrecognized}</strong></div>` : ''}
+    <div class="csv-bk-row total"><span>Total Active Members</span><strong>${members.length}</strong></div>
+    <div class="csv-date-note">Plan counts will auto-fill when applied</div>
+    <button class="btn-apply-csv" onclick="applyRoster()">Apply &amp; Auto-Fill Plan Counts</button>
+  `;
+}
+
+function applyRoster() {
+  if (!_pendingRoster) return;
+  // Work in both weekly (wd.weekEnding) and monthly (wdM.monthKey) context
+  const snapshotKey = wd.weekEnding || (wdM.monthKey ? wdM.monthKey + '-01' : null);
+  if (!snapshotKey) return;
+  saveRosterSnapshot(snapshotKey, _pendingRoster);
+
+  // Auto-fill plan variant counts using billing-period-aware mapping
+  const planCounts = {};
+  PLAN_VARIANTS.forEach(p => { planCounts[p.key] = 0; });
+  _pendingRoster.forEach(m => {
+    const key = normalizePlanVariant(m.planName, m.tier);
+    if (key) planCounts[key] = (planCounts[key] || 0) + 1;
+  });
+  const target = wd.weekEnding ? wd : wdM;
+  PLAN_VARIANTS.forEach(p => { target[p.key] = planCounts[p.key] || null; });
+  target.activeMembers = PLAN_VARIANTS.reduce((s, p) => s + (target[p.key] || 0), 0) || null;
+
+  const btn = document.querySelector('#rosterResults .btn-apply-csv');
+  if (btn) { btn.textContent = 'Applied! Plan counts updated.'; btn.disabled = true; btn.style.background = 'var(--green)'; }
+  _pendingRoster = null;
+}
+
+// ── Wizard ────────────────────────────────────────────────────────────────────
+let wd = {};
+let step = 0;
+let editingWeek = null;
+
+const STEPS = [
+  {
+    id: 'weekEnding', eyebrow: 'Getting Started',
+    q: 'What week are we wrapping up?',
+    hint: 'Pick the week ending date.',
+    type: 'date', required: true,
+  },
+  {
+    id: 'revenue', eyebrow: 'Revenue',
+    q: 'What was the revenue this week?',
+    hint: 'Upload your Momence CSV for an auto-split, or enter manually below.',
+    type: 'rev',
+  },
+  {
+    id: 'adSpend', eyebrow: 'Acquisition',
+    q: 'How much did you spend on Meta ads?',
+    hint: 'Used to calculate cost per acquisition. Enter 0 if no spend this week.',
+    type: 'currency',
+  },
+  {
+    id: 'newCustomers', eyebrow: 'Acquisition',
+    q: 'New members and one-time class customers?',
+    hint: 'New members = first membership purchase. One-time = new class-only customers.',
+    type: 'two',
+    fields: [
+      { id: 'newMembers', label: 'New Members' },
+      { id: 'newOneTimeClass', label: 'New 1x Class Customers' },
+    ],
+  },
+  {
+    id: 'membershipCounts', eyebrow: 'Membership',
+    q: 'How many active members by plan?',
+    hint: 'Upload your Momence Active Members CSV to auto-count. Or enter the counts manually below.',
+    type: 'roster', skippable: true,
+  },
+  {
+    id: 'classOccupancy', eyebrow: 'Studio Operations',
+    q: 'Class seats booked vs available this week?',
+    hint: 'Booked = actual bookings. Available = total seats offered across all classes.',
+    type: 'two',
+    fields: [
+      { id: 'classBooked', label: 'Seats Booked' },
+      { id: 'classAvailable', label: 'Total Seats Available' },
+    ],
+  },
+  {
+    id: 'kickstartOccupancy', eyebrow: 'Studio Operations',
+    q: 'Kickstart: booked vs capacity?',
+    hint: 'Leave blank if no Kickstart sessions ran this week.',
+    type: 'two', skippable: true,
+    fields: [
+      { id: 'kickstartBooked', label: 'Kickstart Booked' },
+      { id: 'kickstartAvailable', label: 'Kickstart Capacity' },
+    ],
+  },
+  {
+    id: 'npsRaw', eyebrow: 'Customer Experience',
+    q: 'Any NPS scores this week?',
+    hint: 'Enter a final score (like 85) or paste raw scores comma-separated (like 9,10,8,7). Leave blank if none.',
+    type: 'text', skippable: true,
+  },
+  {
+    id: 'kilnsFired', eyebrow: 'Studio Operations',
+    q: 'How many kilns were fired this week?',
+    hint: 'Count of kiln firings for the week.',
+    type: 'number',
+  },
+  {
+    id: 'notes', eyebrow: 'Wrap Up',
+    q: 'Anything to note about this week?',
+    hint: 'Optional. Big events, unusual refunds, closures, promos, etc.',
+    type: 'textarea', skippable: true,
+  },
+];
+
+const N = STEPS.length;
+
+function openWizard() {
+  wd = {};
+  step = 0;
+  editingWeek = null;
+  const today = new Date();
+  wd.weekEnding = today.toISOString().split('T')[0];
+  document.getElementById('wizard').style.display = 'block';
+  renderStep();
+}
+
+function editWeek(we) {
+  const entry = load().weeks.find(w => w.weekEnding === we);
+  if (!entry) return;
+  wd = { ...entry };
+  editingWeek = we;
+  step = 0;
+  document.getElementById('wizard').style.display = 'block';
+  renderStep();
+}
+
+function closeWizard() {
+  document.getElementById('wizard').style.display = 'none';
+  editingWeek = null;
+  editingMonth = null;
+  wdM = {};
+  stepM = 0;
+}
+
+function renderStep() {
+  const s = STEPS[step];
+  document.getElementById('wizStepLabel').textContent = `Step ${step + 1} of ${N}${editingWeek ? ' (editing)' : ''}`;
+  document.getElementById('progressFill').style.width = `${((step + 1) / N) * 100}%`;
+
+  let inputHtml = '', calcHtml = '';
+
+  if (s.type === 'date') {
+    inputHtml = `<div class="field-row">
+      <input type="date" id="wiz_weekEnding" value="${wd.weekEnding || ''}" oninput="onDateChange()" />
+    </div>
+    <div id="monthToggleWrap" style="display:none;margin-top:14px">
+      <div class="field-lbl" style="margin-bottom:8px">Which month should this week count toward?</div>
+      <div class="month-toggle" id="monthToggle"></div>
+    </div>`;
+
+  } else if (s.type === 'rev') {
+    const mbr = wd.revMembership !== undefined ? wd.revMembership : '';
+    const cls = wd.revClasses    !== undefined ? wd.revClasses    : '';
+    const oth = wd.revOther      !== undefined ? wd.revOther      : '';
+    inputHtml = `
+      <div class="csv-zone">
+        <label class="csv-drop" for="csvInput" ondragover="event.preventDefault()" ondrop="handleDrop(event)">
+          <span class="csv-drop-icon">&#128206;</span>
+          <span class="csv-drop-main">Upload Momence payments CSV</span>
+          <span class="csv-drop-sub">Tips, tax &amp; refunds excluded automatically</span>
+        </label>
+        <input type="file" id="csvInput" accept=".csv" style="display:none" onchange="handleCSV(event)">
+      </div>
+      <div class="csv-results" id="csvResults"></div>
+      <div class="or-divider">or enter manually</div>
+      <div class="rev-fields">
+        <div class="rev-field-row">
+          <span class="rev-field-lbl">Membership</span>
+          <div class="input-wrap"><span class="input-pfx">$</span>
+            <input type="number" id="wiz_revMembership" class="pfx" value="${mbr}" min="0" step="0.01" placeholder="0.00" oninput="updateRevTotal()">
+          </div>
+        </div>
+        <div class="rev-field-row">
+          <span class="rev-field-lbl">Classes &amp; Events</span>
+          <div class="input-wrap"><span class="input-pfx">$</span>
+            <input type="number" id="wiz_revClasses" class="pfx" value="${cls}" min="0" step="0.01" placeholder="0.00" oninput="updateRevTotal()">
+          </div>
+        </div>
+        <div class="rev-field-row">
+          <span class="rev-field-lbl">Other</span>
+          <div class="input-wrap"><span class="input-pfx">$</span>
+            <input type="number" id="wiz_revOther" class="pfx" value="${oth}" min="0" step="0.01" placeholder="0.00" oninput="updateRevTotal()">
+          </div>
+        </div>
+        <div class="rev-total-line" id="revTotalLine">Net Total: ${mbr || cls || oth ? f$((parseFloat(mbr)||0)+(parseFloat(cls)||0)+(parseFloat(oth)||0)) : '--'}</div>
+      </div>`;
+
+  } else if (s.type === 'tiers') {
+    inputHtml = `<div class="tier-grid">` +
+      PLAN_VARIANTS.map(p => {
+        const v = wd[p.key] !== undefined && wd[p.key] !== null ? wd[p.key] : '';
+        const priceLabel = p.mrr !== null ? `$${p.mrr.toFixed(2)}/mo` : 'annual';
+        return `<div class="tier-card">
+          <div class="tier-card-name">${p.label}</div>
+          <div class="tier-card-price">${priceLabel} &middot; <span style="font-style:italic">${p.note}</span></div>
+          <input type="number" id="wiz_${p.key}" value="${v}" min="0" step="1" placeholder="0" oninput="updateMRRPreview()">
+        </div>`;
+      }).join('') + `</div>`;
+    calcHtml = `<div class="calc-box" id="mrrPreview"></div>`;
+
+  } else if (s.type === 'currency') {
+    const v = wd[s.id] !== undefined ? wd[s.id] : '';
+    inputHtml = `<div class="field-row"><div class="input-wrap">
+      <span class="input-pfx">$</span>
+      <input type="number" id="wiz_${s.id}" class="pfx" value="${v}" min="0" step="0.01" placeholder="0.00" oninput="onCurrencyInput()">
+    </div></div>`;
+    if (s.id === 'adSpend') calcHtml = `<div class="calc-box" id="calcBox"></div>`;
+
+  } else if (s.type === 'number') {
+    const v = wd[s.id] !== undefined ? wd[s.id] : '';
+    inputHtml = `<div class="field-row">
+      <input type="number" id="wiz_${s.id}" value="${v}" min="0" step="1" placeholder="0">
+    </div>`;
+
+  } else if (s.type === 'text') {
+    const v = wd[s.id] !== undefined ? wd[s.id] : '';
+    inputHtml = `<div class="field-row">
+      <input type="text" id="wiz_${s.id}" value="${v}" placeholder="">
+    </div>`;
+
+  } else if (s.type === 'textarea') {
+    const v = wd[s.id] !== undefined ? wd[s.id] : '';
+    inputHtml = `<div class="field-row">
+      <textarea id="wiz_${s.id}" placeholder="Optional...">${v}</textarea>
+    </div>`;
+
+  } else if (s.type === 'two') {
+    inputHtml = `<div class="two-col">` +
+      s.fields.map(f => {
+        const v = wd[f.id] !== undefined ? wd[f.id] : '';
+        return `<div>
+          <div class="field-lbl">${f.label}</div>
+          <input type="number" id="wiz_${f.id}" value="${v}" min="0" step="1" placeholder="0" oninput="onTwoInput()">
+        </div>`;
+      }).join('') + `</div>`;
+    calcHtml = `<div class="calc-box" id="calcBox"></div>`;
+  } else if (s.type === 'roster') {
+    const existing = getRosterSnapshot(wd.weekEnding);
+    const existingNote = existing
+      ? `<div style="color:var(--green);font-size:13px;margin-bottom:12px;padding:8px 12px;background:#f0faf2;border-radius:7px">
+           &#10003; ${existing.members.length} members on record for this week.
+         </div>` : '';
+    const manualTierInputs = PLAN_VARIANTS.map(p => {
+      const v = wd[p.key] !== undefined && wd[p.key] !== null ? wd[p.key] : '';
+      return `<div>
+        <div class="field-lbl">${p.label}</div>
+        <input type="number" id="wiz_${p.key}" value="${v}" min="0" step="1" placeholder="0" oninput="onRosterManualInput()">
+      </div>`;
+    }).join('');
+    inputHtml = `
+      ${existingNote}
+      <div class="csv-zone">
+        <label class="csv-drop" for="rosterInput" ondragover="event.preventDefault()" ondrop="handleRosterDrop(event)">
+          <span class="csv-drop-icon">&#128101;</span>
+          <span class="csv-drop-main">Upload Momence Active Members CSV</span>
+          <span class="csv-drop-sub">Auto-fills tier counts &middot; Enables exact churn tracking</span>
+        </label>
+        <input type="file" id="rosterInput" accept=".csv" style="display:none" onchange="handleRosterCSV(event)">
+      </div>
+      <div class="csv-results" id="rosterResults" style="display:none"></div>
+      <div style="margin-top:20px">
+        <div class="section-label" style="margin-bottom:10px">Or enter counts manually</div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
+          ${manualTierInputs}
+        </div>
+        <div class="calc-box" id="rosterManualTotal" style="margin-top:10px"></div>
+      </div>
+    `;
+  }
+
+  const isLast  = step === N - 1;
+  const skipBtn = s.skippable ? `<button class="btn-skip" onclick="skipStep()">Skip this one</button>` : '';
+  const backBtn = step > 0 ? `<button class="btn-back" onclick="prevStep()">&#8592; Back</button>` : '';
+
+  document.getElementById('stepBody').innerHTML = `
+    <div class="step-eyebrow">${s.eyebrow}</div>
+    <div class="step-q">${s.q}</div>
+    <div class="step-hint">${s.hint}</div>
+    ${inputHtml}
+    ${calcHtml}
+    <div class="wiz-actions">
+      ${backBtn}
+      <button class="btn-next" onclick="nextStep()">${isLast ? 'Review &amp; Save &#8594;' : 'Next &#8594;'}</button>
+      ${skipBtn}
+    </div>
+  `;
+
+  const first = document.getElementById('stepBody').querySelector('input:not([type=file]), textarea');
+  if (first && s.type !== 'rev' && s.type !== 'tiers') setTimeout(() => first.focus(), 60);
+
+  if (s.id === 'adSpend')    updateCACPreview();
+  if (s.id === 'newCustomers') updateNewCustPreview();
+  if (s.id === 'classOccupancy' || s.id === 'kickstartOccupancy') updateOccPreview();
+  if (s.type === 'tiers')    updateMRRPreview();
+  if (s.type === 'date')     renderMonthToggle();
+}
+
+function onDateChange() {
+  const val = document.getElementById('wiz_weekEnding')?.value;
+  if (val) wd.weekEnding = val;
+  renderMonthToggle();
+}
+
+function renderMonthToggle() {
+  const wrap = document.getElementById('monthToggleWrap');
+  if (!wrap) return;
+  const dateVal = document.getElementById('wiz_weekEnding')?.value;
+  if (!dateVal) { wrap.style.display = 'none'; return; }
+
+  const [y, m, d] = dateVal.split('-').map(Number);
+  const weekEnd   = new Date(y, m - 1, d);
+  const weekStart = new Date(y, m - 1, d - 6);
+
+  if (weekStart.getMonth() === weekEnd.getMonth()) {
+    wrap.style.display = 'none';
+    wd.monthOverride = null;
+    return;
+  }
+
+  const prevMK = `${weekStart.getFullYear()}-${String(weekStart.getMonth() + 1).padStart(2, '0')}`;
+  const currMK = `${weekEnd.getFullYear()}-${String(weekEnd.getMonth() + 1).padStart(2, '0')}`;
+  const majorityMK = d >= 4 ? currMK : prevMK;
+  if (!wd.monthOverride) wd.monthOverride = majorityMK;
+
+  wrap.style.display = 'block';
+  document.getElementById('monthToggle').innerHTML = [prevMK, currMK].map(mk => `
+    <button type="button" class="month-toggle-btn ${mk === wd.monthOverride ? 'active' : ''}"
+      onclick="selectMonthOverride('${mk}')">${fmtMonth(mk)}</button>
+  `).join('');
+}
+
+function selectMonthOverride(mk) {
+  wd.monthOverride = mk;
+  renderMonthToggle();
+}
+
+function collectStep() {
+  const s = STEPS[step];
+  if (s.type === 'date') {
+    const v = document.getElementById('wiz_weekEnding').value;
+    if (!v) return false;
+    wd.weekEnding = v;
+    // Clear monthOverride if the week is now fully within one month
+    const [y, m, d] = v.split('-').map(Number);
+    if (new Date(y, m - 1, d - 6).getMonth() === new Date(y, m - 1, d).getMonth()) {
+      wd.monthOverride = null;
+    }
+  } else if (s.type === 'roster') {
+    // Collect manual tier inputs (also picks up values auto-filled by applyRoster)
+    PLAN_VARIANTS.forEach(p => {
+      const el = document.getElementById('wiz_' + p.key);
+      if (el) {
+        const v = parseInt(el.value, 10);
+        wd[p.key] = isNaN(v) || v === 0 ? null : v;
+      }
+    });
+    wd.activeMembers = PLAN_VARIANTS.reduce((sum, p) => sum + (wd[p.key] || 0), 0) || null;
+  } else if (s.type === 'rev') {
+    const mbr = parseFloat(document.getElementById('wiz_revMembership')?.value) || 0;
+    const cls = parseFloat(document.getElementById('wiz_revClasses')?.value)    || 0;
+    const oth = parseFloat(document.getElementById('wiz_revOther')?.value)      || 0;
+    wd.revMembership = mbr;
+    wd.revClasses    = cls;
+    wd.revOther      = oth;
+    wd.revenue       = Math.round((mbr + cls + oth) * 100) / 100;
+  } else if (s.type === 'tiers') {
+    PLAN_VARIANTS.forEach(p => {
+      const v = parseInt(document.getElementById(`wiz_${p.key}`)?.value);
+      wd[p.key] = isNaN(v) || v === 0 ? null : v;
+    });
+    wd.activeMembers = PLAN_VARIANTS.reduce((sum, p) => sum + (wd[p.key] || 0), 0) || null;
+  } else if (s.type === 'currency') {
+    const v = document.getElementById(`wiz_${s.id}`).value;
+    if (s.required && v === '') return false;
+    wd[s.id] = v !== '' ? parseFloat(v) : 0;
+  } else if (s.type === 'number') {
+    const v = document.getElementById(`wiz_${s.id}`).value;
+    wd[s.id] = v !== '' ? parseInt(v, 10) : null;
+  } else if (s.type === 'text') {
+    wd[s.id] = document.getElementById(`wiz_${s.id}`).value.trim();
+  } else if (s.type === 'textarea') {
+    wd[s.id] = document.getElementById(`wiz_${s.id}`).value.trim();
+  } else if (s.type === 'two') {
+    s.fields.forEach(f => {
+      const el = document.getElementById(`wiz_${f.id}`);
+      wd[f.id] = el && el.value !== '' ? parseInt(el.value, 10) : null;
+    });
+  }
+  return true;
+}
+
+function nextStep() {
+  if (!collectStep()) {
+    const inp = document.getElementById('stepBody').querySelector('input');
+    if (inp) { inp.style.borderColor = 'var(--terracotta)'; inp.focus(); }
+    return;
+  }
+  if (step < N - 1) { step++; renderStep(); }
+  else showReview();
+}
+
+function prevStep() {
+  if (step > 0) { step--; renderStep(); }
+}
+
+function skipStep() {
+  step++;
+  if (step < N) renderStep();
+  else showReview();
+}
+
+// ── Calc previews ─────────────────────────────────────────────────────────────
+function onCurrencyInput() { if (STEPS[step].id === 'adSpend') updateCACPreview(); }
+
+function onTwoInput() {
+  const sid = STEPS[step].id;
+  if (sid === 'newCustomers')  updateNewCustPreview();
+  if (sid === 'classOccupancy' || sid === 'kickstartOccupancy') updateOccPreview();
+}
+
+function onRosterManualInput() {
+  let total = 0;
+  PLAN_VARIANTS.forEach(p => {
+    const el = document.getElementById('wiz_' + p.key);
+    if (el) total += parseInt(el.value, 10) || 0;
+  });
+  const box = document.getElementById('rosterManualTotal');
+  if (box) box.textContent = total > 0 ? `Total active members: ${total}` : '';
+}
+
+function updateRevTotal() {
+  const mbr = parseFloat(document.getElementById('wiz_revMembership')?.value) || 0;
+  const cls = parseFloat(document.getElementById('wiz_revClasses')?.value)    || 0;
+  const oth = parseFloat(document.getElementById('wiz_revOther')?.value)      || 0;
+  const el  = document.getElementById('revTotalLine');
+  if (el) el.textContent = `Net Total: ${f$(mbr + cls + oth)}`;
+}
+
+function updateMRRPreview() {
+  const el = document.getElementById('mrrPreview');
+  if (!el) return;
+  let total = 0, mrr = 0;
+  PLAN_VARIANTS.forEach(p => {
+    const cnt = parseInt(document.getElementById(`wiz_${p.key}`)?.value) || 0;
+    total += cnt;
+    if (p.mrr !== null) mrr += cnt * p.mrr;
+  });
+  if (!total) { el.style.display = 'none'; return; }
+  el.style.display = 'block';
+  el.innerHTML = `${total} total members &nbsp;&middot;&nbsp; MRR (excl. annual): <strong>${f$(mrr)}</strong>`;
+}
+
+function updateCACPreview() {
+  const el = document.getElementById('calcBox');
+  if (!el) return;
+  const spend = parseFloat(document.getElementById('wiz_adSpend')?.value) || 0;
+  const total = (wd.newMembers || 0) + (wd.newOneTimeClass || 0);
+  if (spend > 0 && total > 0) {
+    el.style.display = 'block';
+    el.innerHTML = `Blended CAC: <strong>${f$(spend / total)}</strong> (${total} new customers)`;
+  } else { el.style.display = 'none'; }
+}
+
+function updateNewCustPreview() {
+  const el = document.getElementById('calcBox');
+  if (!el) return;
+  const nm    = parseInt(document.getElementById('wiz_newMembers')?.value)      || 0;
+  const nc    = parseInt(document.getElementById('wiz_newOneTimeClass')?.value) || 0;
+  const spend = wd.adSpend || 0;
+  if (spend > 0 && (nm + nc) > 0) {
+    el.style.display = 'block';
+    el.innerHTML = `CAC: <strong>${f$(spend / (nm + nc))}</strong> from ${f$(spend)} spend`;
+  } else { el.style.display = 'none'; }
+}
+
+function updateOccPreview() {
+  const el = document.getElementById('calcBox');
+  if (!el) return;
+  const sid    = STEPS[step].id;
+  const booked = parseInt(document.getElementById(sid === 'classOccupancy' ? 'wiz_classBooked' : 'wiz_kickstartBooked')?.value) || 0;
+  const avail  = parseInt(document.getElementById(sid === 'classOccupancy' ? 'wiz_classAvailable' : 'wiz_kickstartAvailable')?.value) || 0;
+  const goal   = sid === 'kickstartOccupancy' ? GOALS.kickstartOccupancy : GOALS.classOccupancy;
+  if (avail > 0) {
+    const pct = (booked / avail) * 100;
+    const s   = statusOf(pct, goal);
+    const clr = { green: 'var(--green)', amber: 'var(--amber)', red: 'var(--terracotta)', grey: '#aaa' };
+    el.style.display = 'block';
+    el.innerHTML = `Occupancy: <strong style="color:${clr[s]}">${pct.toFixed(1)}%</strong>`;
+  } else { el.style.display = 'none'; }
+}
+
+// ── CSV parser ────────────────────────────────────────────────────────────────
+function parseCSVText(text) {
+  const rows = [];
+  const lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+  for (const line of lines) {
+    if (!line.trim()) continue;
+    const fields = [];
+    let f = '', inQ = false;
+    for (let i = 0; i < line.length; i++) {
+      const c = line[i];
+      if (c === '"') { inQ = !inQ; }
+      else if (c === ',' && !inQ) { fields.push(f); f = ''; }
+      else { f += c; }
+    }
+    fields.push(f);
+    rows.push(fields);
+  }
+  return rows;
+}
+
+function parseMomenceDate(str) {
+  const s = (str || '').trim().split(',')[0].trim();
+  const iso = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (iso) return new Date(+iso[1], +iso[2] - 1, +iso[3]);
+  const mdy = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (mdy) return new Date(+mdy[3], +mdy[1] - 1, +mdy[2]);
+  return null;
+}
+
+function handleDrop(event) {
+  event.preventDefault();
+  const file = event.dataTransfer.files[0];
+  if (file) processCSVFile(file);
+}
+
+function handleCSV(event) {
+  const file = event.target.files[0];
+  if (file) processCSVFile(file);
+}
+
+function processCSVFile(file) {
+  const reader = new FileReader();
+  reader.onload = e => {
+    try { processCSVData(e.target.result); }
+    catch (err) { alert('Could not parse CSV: ' + err.message); }
+  };
+  reader.readAsText(file);
+}
+
+function processCSVData(text) {
+  const rows    = parseCSVText(text);
+  if (rows.length < 2) { alert('CSV appears empty.'); return; }
+
+  const header = rows[0];
+  const iCat   = header.findIndex(h => h.trim().toLowerCase() === 'category');
+  const iSale  = header.findIndex(h => h.trim().toLowerCase() === 'sale value');
+  const iTax   = header.findIndex(h => h.trim().toLowerCase() === 'tax');
+  const iRef   = header.findIndex(h => h.trim().toLowerCase() === 'refunded');
+  const iStat  = header.findIndex(h => h.trim().toLowerCase() === 'payment status');
+  const iDate  = header.findIndex(h => h.trim().toLowerCase() === 'payment date');
+  const iItem  = header.findIndex(h => { const lh = h.trim().toLowerCase(); return lh === 'item name' || lh === 'item' || lh === 'description' || lh === 'product name' || lh === 'event name' || lh === 'class name'; });
+
+  if (iCat < 0 || iSale < 0) { alert('This does not look like a Momence payments CSV. Expected "Category" and "Sale value" columns.'); return; }
+
+  const [ey, em, ed] = wd.weekEnding.split('-').map(Number);
+  const endDate   = new Date(ey, em - 1, ed, 23, 59, 59);
+  const startDate = new Date(ey, em - 1, ed - 6, 0, 0, 0);
+
+  let mbr = 0, cls = 0, oth = 0, tips = 0, taxTotal = 0, matchedRows = 0, totalRows = 0;
+  let ctpa = 0, bpk = 0, skc = 0, clsOther = 0;
+
+  for (let i = 1; i < rows.length; i++) {
+    const r = rows[i];
+    if (r.length < 3) continue;
+    totalRows++;
+
+    if (iStat >= 0 && r[iStat]?.trim().toLowerCase() !== 'succeeded') continue;
+
+    if (iDate >= 0) {
+      const d = parseMomenceDate(r[iDate]);
+      if (!d || d < startDate || d > endDate) continue;
+    }
+
+    const cat  = (r[iCat]  || '').trim();
+    const sale = parseFloat(r[iSale] || '0') || 0;
+    const tax  = parseFloat((iTax  >= 0 ? r[iTax]  : '0') || '0') || 0;
+    const ref  = parseFloat((iRef  >= 0 ? r[iRef]  : '0') || '0') || 0;
+    const net  = sale - tax - ref;
+    taxTotal  += tax;
+    matchedRows++;
+
+    if (cat === 'Tip') { tips += net; continue; }
+    if (cat === 'Subscription') { mbr += net; }
+    else if (cat === 'Event') {
+      cls += net;
+      const item = ((iItem >= 0 ? r[iItem] : '') || '').trim().toLowerCase();
+      if      (item.includes('clay together'))                                   ctpa     += net;
+      else if (item.includes('kickstart'))                                       bpk      += net;
+      else if (item.includes('summer kids') || item.includes('kids camp'))       skc      += net;
+      else                                                                       clsOther += net;
+    }
+    else                        { oth += net; }
+  }
+
+  const netTotal = mbr + cls + oth;
+  const resultEl = document.getElementById('csvResults');
+  if (!resultEl) return;
+
+  if (matchedRows === 0) {
+    resultEl.style.display = 'block';
+    resultEl.innerHTML = `<div style="color:var(--terracotta);font-size:13px;padding:8px 0">
+      No matching rows found for the week ending ${fDate(wd.weekEnding)}. Check that you uploaded the right file or date range.
+    </div>`;
+    return;
+  }
+
+  resultEl.style.display = 'block';
+  resultEl.innerHTML = `
+    <div class="csv-bk-row"><span>Membership</span><strong>${f$(mbr)}</strong></div>
+    <div class="csv-bk-row"><span>Classes &amp; Events</span><strong>${f$(cls)}</strong></div>
+    ${ctpa     ? `<div class="csv-bk-row sub"><span>&#8627; Clay Together</span><span>${f$(ctpa)}</span></div>` : ''}
+    ${bpk      ? `<div class="csv-bk-row sub"><span>&#8627; Kickstart</span><span>${f$(bpk)}</span></div>` : ''}
+    ${skc      ? `<div class="csv-bk-row sub"><span>&#8627; Kids Camp</span><span>${f$(skc)}</span></div>` : ''}
+    ${clsOther ? `<div class="csv-bk-row sub"><span>&#8627; Other classes</span><span>${f$(clsOther)}</span></div>` : ''}
+    <div class="csv-bk-row"><span>Other (products, gift cards)</span><strong>${f$(oth)}</strong></div>
+    <div class="csv-bk-row total"><span>Net Total</span><strong>${f$(netTotal)}</strong></div>
+    <div class="csv-bk-row excluded"><span>Tips (excluded)</span><span>${f$(tips)}</span></div>
+    <div class="csv-bk-row excluded"><span>Tax (excluded)</span><span>${f$(taxTotal)}</span></div>
+    <div class="csv-date-note">${matchedRows} rows matched for week ending ${fDate(wd.weekEnding)}</div>
+    <button class="btn-apply-csv" onclick="applyCSV(${mbr.toFixed(2)}, ${cls.toFixed(2)}, ${ctpa.toFixed(2)}, ${bpk.toFixed(2)}, ${skc.toFixed(2)}, ${clsOther.toFixed(2)}, ${oth.toFixed(2)})">Apply These Numbers</button>
+  `;
+}
+
+function applyCSV(mbr, cls, ctpa, bpk, skc, clsOther, oth) {
+  const mEl = document.getElementById('wiz_revMembership');
+  const cEl = document.getElementById('wiz_revClasses');
+  const oEl = document.getElementById('wiz_revOther');
+  if (mEl) mEl.value = mbr.toFixed(2);
+  if (cEl) cEl.value = cls.toFixed(2);
+  if (oEl) oEl.value = oth.toFixed(2);
+  wd.revClassesCTPA  = ctpa;
+  wd.revClassesBPK   = bpk;
+  wd.revClassesSKC   = skc;
+  wd.revClassesOther = clsOther;
+  updateRevTotal();
+  const btn = document.querySelector('.btn-apply-csv');
+  if (btn) { btn.textContent = 'Applied!'; btn.disabled = true; btn.style.background = 'var(--green)'; }
+}
+
+// ── Review & Save ─────────────────────────────────────────────────────────────
+function showReview() {
+  const d    = wd;
+  const cac  = calcCAC(d.adSpend, d.newMembers, d.newOneTimeClass);
+  const clsO = calcOcc(d.classBooked, d.classAvailable);
+  const ksO  = calcOcc(d.kickstartBooked, d.kickstartAvailable);
+  const nps  = parseNPS(d.npsRaw);
+  const mrr  = calcMRR(d);
+  const mrrEst = mrrIsEstimated(d);
+
+  document.getElementById('wizStepLabel').textContent = 'Review';
+  document.getElementById('progressFill').style.width = '100%';
+
+  const rows = [
+    { label: 'Week Ending',     val: fDate(d.weekEnding),              s: null },
+    { label: 'Net Revenue',     val: f$(d.revenue),                    s: null },
+    { label: 'Membership Rev',  val: d.revMembership ? f$(d.revMembership) : '--', s: null },
+    { label: 'Class Rev',       val: d.revClasses    ? f$(d.revClasses)    : '--', s: null },
+    { label: 'Ad Spend',        val: f$(d.adSpend),                    s: null },
+    { label: 'Blended CAC',     val: cac !== null ? f$(cac) : '--',    s: statusOf(cac, GOALS.cac, 'low') },
+    { label: 'New Members',     val: fNum(d.newMembers),               s: null },
+    { label: 'New 1x Class',    val: fNum(d.newOneTimeClass),          s: null },
+    { label: 'Active Members',  val: fNum(getActiveMembers(d)),        s: statusOf(getActiveMembers(d), GOALS.activeMembers) },
+    { label: mrrEst ? 'MRR (est)' : 'MRR', val: f$(mrr),              s: statusOf(mrr, GOALS.mrr) },
+    { label: 'Class Occupancy', val: clsO !== null ? fPct(clsO) : '--', s: statusOf(clsO, GOALS.classOccupancy) },
+    { label: 'NPS',             val: nps  !== null ? String(nps) : '--', s: statusOf(nps, GOALS.nps) },
+    { label: 'Kilns Fired',     val: fNum(d.kilnsFired),               s: null },
+  ];
+
+  document.getElementById('stepBody').innerHTML = `
+    <div class="step-eyebrow">Review</div>
+    <div class="step-q">Everything look right?</div>
+    <div class="step-hint" style="margin-bottom:20px">Double-check before saving.</div>
+    <div class="review-grid">
+      ${rows.map(r => `
+        <div class="review-row">
+          <span class="rr-label">${r.label}</span>
+          <span class="rr-val">${r.s ? dot(r.s) : ''}${r.val}</span>
+        </div>
+      `).join('')}
+    </div>
+    ${d.notes ? `<div style="background:white;border:1px solid var(--border);border-radius:6px;padding:12px;font-size:13px;color:#666;margin-bottom:16px"><strong>Notes:</strong> ${d.notes}</div>` : ''}
+    <button class="btn-save" onclick="saveWeek()">Save This Week</button>
+    <button class="btn-skip" onclick="step = N - 1; renderStep()">&#8592; Go back</button>
+  `;
+}
+
+function saveWeek() {
+  if (!wd.weekEnding) { alert('No week ending date.'); return; }
+  const entry = {
+    weekEnding:          wd.weekEnding,
+    monthOverride:       wd.monthOverride        || null,
+    revenue:             wd.revenue             || 0,
+    revMembership:       wd.revMembership        || 0,
+    revClasses:          wd.revClasses           || 0,
+    revClassesCTPA:      wd.revClassesCTPA       || 0,
+    revClassesBPK:       wd.revClassesBPK        || 0,
+    revClassesSKC:       wd.revClassesSKC        || 0,
+    revClassesOther:     wd.revClassesOther      || 0,
+    revOther:            wd.revOther             || 0,
+    adSpend:             wd.adSpend              || 0,
+    newMembers:          wd.newMembers           || 0,
+    newOneTimeClass:     wd.newOneTimeClass      || 0,
+    membersBasic:        wd.membersBasic         || null,
+    membersStudent:      wd.membersStudent       || null,
+    membersPro:          wd.membersPro           || null,
+    membersExpert:       wd.membersExpert        || null,
+    planBasicMonthly:    wd.planBasicMonthly     || null,
+    planBasic3Month:     wd.planBasic3Month      || null,
+    planBasicAnnual:     wd.planBasicAnnual      || null,
+    planProMonthly:      wd.planProMonthly       || null,
+    planPro3Month:       wd.planPro3Month        || null,
+    planProAnnual:       wd.planProAnnual        || null,
+    planExpertMonthly:   wd.planExpertMonthly    || null,
+    planExpert3Month:    wd.planExpert3Month     || null,
+    planExpertAnnual:    wd.planExpertAnnual     || null,
+    activeMembers:       wd.activeMembers        || null,
+    classBooked:         wd.classBooked          || null,
+    classAvailable:      wd.classAvailable       || null,
+    kickstartBooked:     wd.kickstartBooked      || null,
+    kickstartAvailable:  wd.kickstartAvailable   || null,
+    npsRaw:              wd.npsRaw               || '',
+    kilnsFired:          wd.kilnsFired           || null,
+    notes:               wd.notes               || '',
+  };
+
+  const data = load();
+  const idx  = data.weeks.findIndex(w => w.weekEnding === entry.weekEnding);
+  if (idx >= 0) {
+    if (!editingWeek && !confirm(`Data for ${fDate(entry.weekEnding)} already exists. Overwrite it?`)) return;
+    data.weeks[idx] = entry;
+  } else {
+    data.weeks.push(entry);
+  }
+  save(data);
+  pushToSheets('week', entry);
+  currentMK = entry.monthOverride || monthKey(entry.weekEnding);
+  closeWizard();
+  renderDash();
+}
+
+// ── Keyboard ──────────────────────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  const wiz = document.getElementById('wizard');
+  if (e.key === 'Escape' && wiz.style.display === 'block') closeWizard();
+  if (e.key === 'Enter'  && wiz.style.display === 'block') {
+    if (document.activeElement.tagName !== 'TEXTAREA') {
+      const btn = document.querySelector('#stepBody .btn-next, #stepBody .btn-save');
+      if (btn) btn.click();
+    }
+  }
+});
+
+// ── Monthly wizard ────────────────────────────────────────────────────────────
+let wdM = {};
+let stepM = 0;
+let editingMonth = null;
+
+const STEPS_MONTH = [
+  {
+    id: 'monthPicker', eyebrow: 'Getting Started',
+    q: 'Which month are you logging?',
+    hint: 'Pick the month.',
+    type: 'month', required: true,
+  },
+  {
+    id: 'revenue', eyebrow: 'Revenue',
+    q: 'What was the total revenue this month?',
+    hint: 'Upload your Momence payments CSV, or enter manually.',
+    type: 'rev',
+  },
+  {
+    id: 'adSpend', eyebrow: 'Acquisition',
+    q: 'Total Meta ad spend this month?',
+    hint: 'Used to calculate monthly CAC. Enter 0 if no spend.',
+    type: 'currency',
+  },
+  {
+    id: 'newCustomers', eyebrow: 'Acquisition',
+    q: 'New members and one-time class customers?',
+    hint: 'New members = first membership purchase this month.',
+    type: 'two',
+    fields: [
+      { id: 'newMembers', label: 'New Members' },
+      { id: 'newOneTimeClass', label: 'New 1x Class Customers' },
+    ],
+  },
+  {
+    id: 'membersTiers', eyebrow: 'Membership',
+    q: 'Member counts by plan at end of month?',
+    hint: 'Current totals in Momence.',
+    type: 'tiers',
+  },
+  {
+    id: 'rosterSnapshot', eyebrow: 'Membership',
+    q: 'Upload your active member roster?',
+    hint: 'Export Active Memberships from Momence. Enables exact churn. Skip if not available.',
+    type: 'roster', skippable: true,
+  },
+  {
+    id: 'npsRaw', eyebrow: 'Customer Experience',
+    q: 'Any NPS scores this month?',
+    hint: 'Enter a final score or comma-separated raw scores. Leave blank if none.',
+    type: 'text', skippable: true,
+  },
+  {
+    id: 'kilnsFired', eyebrow: 'Studio Operations',
+    q: 'Total kilns fired this month?',
+    hint: 'Count of kiln firings for the month.',
+    type: 'number', skippable: true,
+  },
+  {
+    id: 'notes', eyebrow: 'Wrap Up',
+    q: 'Anything to note about this month?',
+    hint: 'Optional. Big events, closures, promos, etc.',
+    type: 'textarea', skippable: true,
+  },
+];
+const NM = STEPS_MONTH.length;
+
+function openMonthWizard(mk) {
+  wdM = {};
+  stepM = 0;
+  editingMonth = mk || null;
+  if (mk) {
+    const data = load();
+    const existing = (data.months || []).find(m => m.monthKey === mk);
+    if (existing) wdM = { ...existing };
+  }
+  if (!wdM.monthKey) {
+    const t = new Date();
+    wdM.monthKey = `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}`;
+  }
+  document.getElementById('wizard').style.display = 'block';
+  renderMonthStep();
+}
+
+function renderMonthStep() {
+  const s = STEPS_MONTH[stepM];
+  document.getElementById('wizStepLabel').textContent = `Step ${stepM + 1} of ${NM} — Monthly${editingMonth ? ' (editing)' : ''}`;
+  document.getElementById('progressFill').style.width = `${((stepM + 1) / NM) * 100}%`;
+
+  let inputHtml = '', calcHtml = '';
+  const stepProxy = { ...s, id: s.id };
+
+  if (s.type === 'month') {
+    inputHtml = `<div class="field-row">
+      <input type="month" id="wiz_monthKey" value="${wdM.monthKey || ''}" style="width:100%;border:2px solid var(--border);border-radius:8px;padding:12px 14px;font-size:16px;background:white;outline:none;font-family:inherit" />
+    </div>`;
+  } else if (s.type === 'rev') {
+    const mbr = wdM.revMembership !== undefined ? wdM.revMembership : '';
+    const cls = wdM.revClasses    !== undefined ? wdM.revClasses    : '';
+    const oth = wdM.revOther      !== undefined ? wdM.revOther      : '';
+    inputHtml = `
+      <div class="csv-zone">
+        <label class="csv-drop" for="csvInputM" ondragover="event.preventDefault()" ondrop="handleDropM(event)">
+          <span class="csv-drop-icon">&#128206;</span>
+          <span class="csv-drop-main">Upload Momence payments CSV</span>
+          <span class="csv-drop-sub">Tips, tax &amp; refunds excluded automatically</span>
+        </label>
+        <input type="file" id="csvInputM" accept=".csv" style="display:none" onchange="handleCSVM(event)">
+      </div>
+      <div class="csv-results" id="csvResults"></div>
+      <div class="or-divider">or enter manually</div>
+      <div class="rev-fields">
+        <div class="rev-field-row"><span class="rev-field-lbl">Membership</span>
+          <div class="input-wrap"><span class="input-pfx">$</span>
+            <input type="number" id="wiz_revMembership" class="pfx" value="${mbr}" min="0" step="0.01" placeholder="0.00" oninput="updateRevTotal()">
+          </div></div>
+        <div class="rev-field-row"><span class="rev-field-lbl">Classes &amp; Events</span>
+          <div class="input-wrap"><span class="input-pfx">$</span>
+            <input type="number" id="wiz_revClasses" class="pfx" value="${cls}" min="0" step="0.01" placeholder="0.00" oninput="updateRevTotal()">
+          </div></div>
+        <div class="rev-field-row"><span class="rev-field-lbl">Other</span>
+          <div class="input-wrap"><span class="input-pfx">$</span>
+            <input type="number" id="wiz_revOther" class="pfx" value="${oth}" min="0" step="0.01" placeholder="0.00" oninput="updateRevTotal()">
+          </div></div>
+        <div class="rev-total-line" id="revTotalLine">Net Total: ${mbr || cls || oth ? f$((parseFloat(mbr)||0)+(parseFloat(cls)||0)+(parseFloat(oth)||0)) : '--'}</div>
+      </div>`;
+  } else if (s.type === 'tiers') {
+    inputHtml = `<div class="tier-grid">` +
+      PLAN_VARIANTS.map(p => {
+        const v = wdM[p.key] !== undefined && wdM[p.key] !== null ? wdM[p.key] : '';
+        const priceLabel = p.mrr !== null ? `$${p.mrr.toFixed(2)}/mo` : 'annual';
+        return `<div class="tier-card">
+          <div class="tier-card-name">${p.label}</div>
+          <div class="tier-card-price">${priceLabel} &middot; <span style="font-style:italic">${p.note}</span></div>
+          <input type="number" id="wiz_${p.key}" value="${v}" min="0" step="1" placeholder="0" oninput="updateMRRPreviewM()">
+        </div>`;
+      }).join('') + `</div>`;
+    calcHtml = `<div class="calc-box" id="mrrPreview"></div>`;
+  } else if (s.type === 'roster') {
+    const existing = wdM.monthKey ? getRosterSnapshot(wdM.monthKey + '-01') : null;
+    const existingNote = existing
+      ? `<div style="color:var(--green);font-size:13px;margin-bottom:12px;padding:8px 12px;background:#f0faf2;border-radius:7px">&#10003; ${existing.members.length} members on record.</div>` : '';
+    inputHtml = `${existingNote}
+      <div class="csv-zone">
+        <label class="csv-drop" for="rosterInputM" ondragover="event.preventDefault()" ondrop="handleRosterDropM(event)">
+          <span class="csv-drop-icon">&#128101;</span>
+          <span class="csv-drop-main">Upload Momence Active Members CSV</span>
+          <span class="csv-drop-sub">Auto-fills plan counts &middot; Enables exact churn tracking</span>
+        </label>
+        <input type="file" id="rosterInputM" accept=".csv" style="display:none" onchange="handleRosterCSVM(event)">
+      </div>
+      <div class="csv-results" id="rosterResults" style="display:none"></div>`;
+  } else if (s.type === 'currency') {
+    const v = wdM[s.id] !== undefined ? wdM[s.id] : '';
+    inputHtml = `<div class="field-row"><div class="input-wrap">
+      <span class="input-pfx">$</span>
+      <input type="number" id="wiz_${s.id}" class="pfx" value="${v}" min="0" step="0.01" placeholder="0.00">
+    </div></div>`;
+  } else if (s.type === 'two') {
+    inputHtml = `<div class="two-col">` +
+      s.fields.map(f => {
+        const v = wdM[f.id] !== undefined ? wdM[f.id] : '';
+        return `<div><div class="field-lbl">${f.label}</div>
+          <input type="number" id="wiz_${f.id}" value="${v}" min="0" step="1" placeholder="0">
+        </div>`;
+      }).join('') + `</div>`;
+  } else if (s.type === 'number') {
+    const v = wdM[s.id] !== undefined ? wdM[s.id] : '';
+    inputHtml = `<div class="field-row"><input type="number" id="wiz_${s.id}" value="${v}" min="0" step="1" placeholder="0"></div>`;
+  } else if (s.type === 'text') {
+    const v = wdM[s.id] !== undefined ? wdM[s.id] : '';
+    inputHtml = `<div class="field-row"><input type="text" id="wiz_${s.id}" value="${v}" placeholder=""></div>`;
+  } else if (s.type === 'textarea') {
+    const v = wdM[s.id] !== undefined ? wdM[s.id] : '';
+    inputHtml = `<div class="field-row"><textarea id="wiz_${s.id}" placeholder="Optional...">${v}</textarea></div>`;
+  }
+
+  const isLastM  = stepM === NM - 1;
+  const skipBtnM = s.skippable ? `<button class="btn-skip" onclick="skipMonthStep()">Skip this one</button>` : '';
+  const backBtnM = stepM > 0  ? `<button class="btn-back" onclick="prevMonthStep()">&#8592; Back</button>` : '';
+
+  document.getElementById('stepBody').innerHTML = `
+    <div class="step-eyebrow">${s.eyebrow} <span class="monthly-badge">Monthly</span></div>
+    <div class="step-q">${s.q}</div>
+    <div class="step-hint">${s.hint}</div>
+    ${inputHtml}
+    ${calcHtml}
+    <div class="wiz-actions">
+      ${backBtnM}
+      <button class="btn-next" onclick="nextMonthStep()">${isLastM ? 'Review &amp; Save &#8594;' : 'Next &#8594;'}</button>
+      ${skipBtnM}
+    </div>
+  `;
+  if (s.type === 'tiers') updateMRRPreviewM();
+}
+
+function collectMonthStep() {
+  const s = STEPS_MONTH[stepM];
+  if (s.type === 'month') {
+    const v = document.getElementById('wiz_monthKey').value;
+    if (!v) return false;
+    wdM.monthKey = v;
+  } else if (s.type === 'rev') {
+    const mbr = parseFloat(document.getElementById('wiz_revMembership')?.value) || 0;
+    const cls = parseFloat(document.getElementById('wiz_revClasses')?.value)    || 0;
+    const oth = parseFloat(document.getElementById('wiz_revOther')?.value)      || 0;
+    wdM.revMembership = mbr; wdM.revClasses = cls; wdM.revOther = oth;
+    wdM.revenue = Math.round((mbr + cls + oth) * 100) / 100;
+  } else if (s.type === 'tiers') {
+    PLAN_VARIANTS.forEach(p => {
+      const v = parseInt(document.getElementById(`wiz_${p.key}`)?.value);
+      wdM[p.key] = isNaN(v) || v === 0 ? null : v;
+    });
+    wdM.activeMembers = PLAN_VARIANTS.reduce((sum, p) => sum + (wdM[p.key] || 0), 0) || null;
+  } else if (s.type === 'roster') {
+    // saved via applyRoster()
+  } else if (s.type === 'currency') {
+    const v = document.getElementById(`wiz_${s.id}`)?.value;
+    wdM[s.id] = v !== '' ? parseFloat(v) : 0;
+  } else if (s.type === 'two') {
+    s.fields.forEach(f => {
+      const el = document.getElementById(`wiz_${f.id}`);
+      wdM[f.id] = el && el.value !== '' ? parseInt(el.value, 10) : null;
+    });
+  } else if (s.type === 'number') {
+    const v = document.getElementById(`wiz_${s.id}`)?.value;
+    wdM[s.id] = v !== '' ? parseInt(v, 10) : null;
+  } else if (s.type === 'text') {
+    wdM[s.id] = document.getElementById(`wiz_${s.id}`)?.value.trim() || '';
+  } else if (s.type === 'textarea') {
+    wdM[s.id] = document.getElementById(`wiz_${s.id}`)?.value.trim() || '';
+  }
+  return true;
+}
+
+function nextMonthStep() {
+  if (!collectMonthStep()) {
+    const inp = document.getElementById('stepBody').querySelector('input');
+    if (inp) { inp.style.borderColor = 'var(--terracotta)'; inp.focus(); }
+    return;
+  }
+  if (stepM < NM - 1) { stepM++; renderMonthStep(); }
+  else showMonthReview();
+}
+
+function prevMonthStep() { if (stepM > 0) { stepM--; renderMonthStep(); } }
+function skipMonthStep() { stepM++; if (stepM < NM) renderMonthStep(); else showMonthReview(); }
+
+function updateMRRPreviewM() {
+  const el = document.getElementById('mrrPreview');
+  if (!el) return;
+  let total = 0, mrr = 0;
+  PLAN_VARIANTS.forEach(p => {
+    const cnt = parseInt(document.getElementById(`wiz_${p.key}`)?.value) || 0;
+    total += cnt; if (p.mrr !== null) mrr += cnt * p.mrr;
+  });
+  if (!total) { el.style.display = 'none'; return; }
+  el.style.display = 'block';
+  el.innerHTML = `${total} total members &nbsp;&middot;&nbsp; MRR (excl. annual): <strong>${f$(mrr)}</strong>`;
+}
+
+function handleDropM(e) { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) processCSVFileM(f); }
+function handleCSVM(e) { const f = e.target.files[0]; if (f) processCSVFileM(f); }
+function processCSVFileM(file) {
+  const reader = new FileReader();
+  reader.onload = e => { try { processCSVDataM(e.target.result); } catch(err) { alert('Could not parse CSV: ' + err.message); } };
+  reader.readAsText(file);
+}
+
+function processCSVDataM(text) {
+  const rows = parseCSVText(text);
+  if (rows.length < 2) { alert('CSV appears empty.'); return; }
+
+  const header = rows[0];
+  const iCat  = header.findIndex(h => h.trim().toLowerCase() === 'category');
+  const iSale = header.findIndex(h => h.trim().toLowerCase() === 'sale value');
+  const iTax  = header.findIndex(h => h.trim().toLowerCase() === 'tax');
+  const iRef  = header.findIndex(h => h.trim().toLowerCase() === 'refunded');
+  const iStat = header.findIndex(h => h.trim().toLowerCase() === 'payment status');
+  const iDate = header.findIndex(h => h.trim().toLowerCase() === 'payment date');
+  const iItem = header.findIndex(h => { const lh = h.trim().toLowerCase(); return lh === 'item name' || lh === 'item' || lh === 'description' || lh === 'product name' || lh === 'event name' || lh === 'class name'; });
+
+  if (iCat < 0 || iSale < 0) { alert('This does not look like a Momence payments CSV. Expected "Category" and "Sale value" columns.'); return; }
+
+  const [y, m] = wdM.monthKey.split('-').map(Number);
+  const startDate = new Date(y, m - 1, 1, 0, 0, 0);
+  const endDate   = new Date(y, m, 0, 23, 59, 59);
+
+  let mbr = 0, cls = 0, oth = 0, tips = 0, taxTotal = 0, matchedRows = 0;
+  let ctpa = 0, bpk = 0, skc = 0, clsOther = 0;
+
+  for (let i = 1; i < rows.length; i++) {
+    const r = rows[i];
+    if (r.length < 3) continue;
+    if (iStat >= 0 && r[iStat]?.trim().toLowerCase() !== 'succeeded') continue;
+    if (iDate >= 0) {
+      const d = parseMomenceDate(r[iDate]);
+      if (!d || d < startDate || d > endDate) continue;
+    }
+    const cat  = (r[iCat]  || '').trim();
+    const sale = parseFloat(r[iSale] || '0') || 0;
+    const tax  = parseFloat((iTax >= 0 ? r[iTax]  : '0') || '0') || 0;
+    const ref  = parseFloat((iRef >= 0 ? r[iRef]  : '0') || '0') || 0;
+    const net  = sale - tax - ref;
+    taxTotal  += tax;
+    matchedRows++;
+
+    if (cat === 'Tip') { tips += net; continue; }
+    if (cat === 'Subscription') { mbr += net; }
+    else if (cat === 'Event') {
+      cls += net;
+      const item = ((iItem >= 0 ? r[iItem] : '') || '').trim().toLowerCase();
+      if      (item.includes('clay together'))                                 ctpa     += net;
+      else if (item.includes('kickstart'))                                     bpk      += net;
+      else if (item.includes('summer kids') || item.includes('kids camp'))     skc      += net;
+      else                                                                     clsOther += net;
+    }
+    else { oth += net; }
+  }
+
+  const netTotal = mbr + cls + oth;
+  const resultEl = document.getElementById('csvResults');
+  if (!resultEl) return;
+
+  if (matchedRows === 0) {
+    resultEl.style.display = 'block';
+    resultEl.innerHTML = `<div style="color:var(--terracotta);font-size:13px;padding:8px 0">
+      No matching rows found for ${wdM.monthKey}. Check that you uploaded the right file.
+    </div>`;
+    return;
+  }
+
+  resultEl.style.display = 'block';
+  resultEl.innerHTML = `
+    <div class="csv-bk-row"><span>Membership</span><strong>${f$(mbr)}</strong></div>
+    <div class="csv-bk-row"><span>Classes &amp; Events</span><strong>${f$(cls)}</strong></div>
+    ${ctpa     ? `<div class="csv-bk-row sub"><span>&#8627; Clay Together</span><span>${f$(ctpa)}</span></div>` : ''}
+    ${bpk      ? `<div class="csv-bk-row sub"><span>&#8627; Kickstart</span><span>${f$(bpk)}</span></div>` : ''}
+    ${skc      ? `<div class="csv-bk-row sub"><span>&#8627; Kids Camp</span><span>${f$(skc)}</span></div>` : ''}
+    ${clsOther ? `<div class="csv-bk-row sub"><span>&#8627; Other classes</span><span>${f$(clsOther)}</span></div>` : ''}
+    <div class="csv-bk-row"><span>Other (products, gift cards)</span><strong>${f$(oth)}</strong></div>
+    <div class="csv-bk-row total"><span>Net Total</span><strong>${f$(netTotal)}</strong></div>
+    <div class="csv-bk-row excluded"><span>Tips (excluded)</span><span>${f$(tips)}</span></div>
+    <div class="csv-bk-row excluded"><span>Tax (excluded)</span><span>${f$(taxTotal)}</span></div>
+    <div class="csv-date-note">${matchedRows} rows matched for ${wdM.monthKey}</div>
+    <button class="btn-apply-csv" onclick="applyCSVM(${mbr.toFixed(2)}, ${cls.toFixed(2)}, ${ctpa.toFixed(2)}, ${bpk.toFixed(2)}, ${skc.toFixed(2)}, ${clsOther.toFixed(2)}, ${oth.toFixed(2)})">Apply These Numbers</button>
+  `;
+}
+
+function applyCSVM(mbr, cls, ctpa, bpk, skc, clsOther, oth) {
+  const mEl = document.getElementById('wiz_revMembership');
+  const cEl = document.getElementById('wiz_revClasses');
+  const oEl = document.getElementById('wiz_revOther');
+  if (mEl) mEl.value = mbr.toFixed(2);
+  if (cEl) cEl.value = cls.toFixed(2);
+  if (oEl) oEl.value = oth.toFixed(2);
+  wdM.revClassesCTPA  = ctpa;
+  wdM.revClassesBPK   = bpk;
+  wdM.revClassesSKC   = skc;
+  wdM.revClassesOther = clsOther;
+  updateRevTotal();
+  const btn = document.querySelector('.btn-apply-csv');
+  if (btn) { btn.textContent = 'Applied!'; btn.disabled = true; btn.style.background = 'var(--green)'; }
+}
+function handleRosterDropM(e) { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) processRosterFileM(f); }
+function handleRosterCSVM(e) { const f = e.target.files[0]; if (f) processRosterFileM(f); }
+function processRosterFileM(file) {
+  const reader = new FileReader();
+  reader.onload = e => { try { processRosterData(e.target.result); } catch(err) { alert('Could not parse roster: ' + err.message); } };
+  reader.readAsText(file);
+}
+
+function showMonthReview() {
+  const d = wdM;
+  const cac = calcCAC(d.adSpend, d.newMembers, d.newOneTimeClass);
+  const mrr = calcMRR(d);
+  const nps = parseNPS(d.npsRaw);
+  document.getElementById('wizStepLabel').textContent = 'Review — Monthly';
+  document.getElementById('progressFill').style.width = '100%';
+  const rows = [
+    { label: 'Month',         val: fmtMonth(d.monthKey)             },
+    { label: 'Net Revenue',   val: f$(d.revenue)                    },
+    { label: 'Ad Spend',      val: f$(d.adSpend)                    },
+    { label: 'Blended CAC',   val: cac !== null ? f$(cac) : '--'    },
+    { label: 'New Members',   val: fNum(d.newMembers)               },
+    { label: 'New 1x Class',  val: fNum(d.newOneTimeClass)          },
+    { label: 'Active Members',val: fNum(getActiveMembers(d))        },
+    { label: 'MRR',           val: mrr !== null ? f$(mrr) : '--'    },
+    { label: 'NPS',           val: nps !== null ? String(nps) : '--'},
+    { label: 'Kilns Fired',   val: fNum(d.kilnsFired)               },
+  ];
+  document.getElementById('stepBody').innerHTML = `
+    <div class="step-eyebrow">Review <span class="monthly-badge">Monthly</span></div>
+    <div class="step-q">Everything look right?</div>
+    <div class="step-hint" style="margin-bottom:20px">Double-check before saving.</div>
+    <div class="review-grid">
+      ${rows.map(r => `<div class="review-row"><span class="rr-label">${r.label}</span><span class="rr-val">${r.val}</span></div>`).join('')}
+    </div>
+    ${d.notes ? `<div style="background:white;border:1px solid var(--border);border-radius:6px;padding:12px;font-size:13px;color:#666;margin-bottom:16px"><strong>Notes:</strong> ${d.notes}</div>` : ''}
+    <button class="btn-save" onclick="saveMonth()">Save This Month</button>
+    <button class="btn-skip" onclick="stepM = NM - 1; renderMonthStep()">&#8592; Go back</button>
+  `;
+}
+
+function saveMonth() {
+  if (!wdM.monthKey) { alert('No month selected.'); return; }
+  const data = load();
+  if (!data.months) data.months = [];
+  const entry = {
+    monthKey:          wdM.monthKey,
+    revenue:           wdM.revenue           || 0,
+    revMembership:     wdM.revMembership      || 0,
+    revClasses:        wdM.revClasses         || 0,
+    revClassesCTPA:    wdM.revClassesCTPA     || 0,
+    revClassesBPK:     wdM.revClassesBPK      || 0,
+    revClassesSKC:     wdM.revClassesSKC      || 0,
+    revClassesOther:   wdM.revClassesOther    || 0,
+    revOther:          wdM.revOther           || 0,
+    adSpend:           wdM.adSpend            || 0,
+    newMembers:        wdM.newMembers         || 0,
+    newOneTimeClass:   wdM.newOneTimeClass    || 0,
+    planBasicMonthly:  wdM.planBasicMonthly   || null,
+    planBasic3Month:   wdM.planBasic3Month    || null,
+    planBasicAnnual:   wdM.planBasicAnnual    || null,
+    planProMonthly:    wdM.planProMonthly     || null,
+    planPro3Month:     wdM.planPro3Month      || null,
+    planProAnnual:     wdM.planProAnnual      || null,
+    planExpertMonthly: wdM.planExpertMonthly  || null,
+    planExpert3Month:  wdM.planExpert3Month   || null,
+    planExpertAnnual:  wdM.planExpertAnnual   || null,
+    activeMembers:     wdM.activeMembers      || null,
+    npsRaw:            wdM.npsRaw             || '',
+    kilnsFired:        wdM.kilnsFired         || null,
+    notes:             wdM.notes              || '',
+  };
+  const idx = data.months.findIndex(m => m.monthKey === entry.monthKey);
+  if (idx >= 0) {
+    if (!editingMonth && !confirm(`Data for ${fmtMonth(entry.monthKey)} already exists. Overwrite it?`)) return;
+    data.months[idx] = entry;
+  } else {
+    data.months.push(entry);
+  }
+  save(data);
+  pushToSheets('month', entry);
+  currentMK = entry.monthKey;
+  closeWizard();
+  renderDash();
+}
+
+function deleteMonth(mk) {
+  if (!confirm(`Delete monthly summary for ${fmtMonth(mk)}?`)) return;
+  const data = load();
+  data.months = (data.months || []).filter(m => m.monthKey !== mk);
+  save(data);
+  renderDash();
+}
+
+// ── Settings ──────────────────────────────────────────────────────────────────
+const SETTINGS_KEY = 'tas_kpi_settings';
+
+function getSettings() {
+  try { return JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}'); } catch { return {}; }
+}
+
+function openSettings() {
+  const url = getSettings().sheetsUrl || '';
+  document.getElementById('sheetsUrlInput').value = url;
+  document.getElementById('syncStatus').textContent = url ? 'Sheets URL is configured.' : '';
+  document.getElementById('syncStatus').className = 'sync-status sync-ok';
+  document.getElementById('settingsModal').classList.add('open');
+}
+
+function closeSettings() {
+  document.getElementById('settingsModal').classList.remove('open');
+}
+
+function saveSettings() {
+  const url = document.getElementById('sheetsUrlInput').value.trim();
+  const settings = getSettings();
+  settings.sheetsUrl = url;
+  localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+  const st = document.getElementById('syncStatus');
+  if (url) {
+    st.textContent = 'Saved. Syncing to Sheets on next save.';
+    st.className = 'sync-status sync-ok';
+  } else {
+    st.textContent = 'Sheets sync disabled.';
+    st.className = 'sync-status';
+  }
+  setTimeout(closeSettings, 1200);
+}
+
+// ── Google Sheets sync ────────────────────────────────────────────────────────
+function getSheetsUrl() { return getSettings().sheetsUrl || ''; }
+
+function pushToSheets(type, entry) {
+  const url = getSheetsUrl();
+  if (!url) return;
+  fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain' },
+    body: JSON.stringify({ type, entry }),
+  }).catch(err => console.warn('Sheets sync failed:', err));
+}
+
+async function pullFromSheets() {
+  const url = getSheetsUrl();
+  if (!url) return;
+  try {
+    const res = await fetch(url + '?action=getAll');
+    if (!res.ok) return;
+    const remote = await res.json();
+    const data = load();
+    let changed = false;
+    // Merge: local wins on conflict, remote fills missing entries
+    if (Array.isArray(remote.weeks)) {
+      remote.weeks.forEach(rw => {
+        if (!data.weeks.find(lw => lw.weekEnding === rw.weekEnding)) {
+          data.weeks.push(rw);
+          changed = true;
+        }
+      });
+    }
+    if (Array.isArray(remote.months)) {
+      remote.months.forEach(rm => {
+        if (!data.months.find(lm => lm.monthKey === rm.monthKey)) {
+          data.months.push(rm);
+          changed = true;
+        }
+      });
+    }
+    if (changed) { save(data); renderDash(); }
+  } catch (err) { console.warn('Sheets pull failed:', err); }
+}
+
+// ── Export backup ─────────────────────────────────────────────────────────────
+function exportBackup() {
+  const data = load();
+  const json = JSON.stringify(data, null, 2);
+  const blob = new Blob([json], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  const today = new Date().toISOString().slice(0, 10);
+  a.download = 'tas-kpi-backup-' + today + '.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+// When served from Apps Script, use the current URL as the API endpoint
+const DEFAULT_SHEETS_URL = window.location.href.includes('script.google.com')
+  ? window.location.href.split('?')[0]
+  : 'https://script.google.com/macros/s/AKfycbzNbOm968NThvlV9Eycux0zkC5ha8_EXhhyvN9s0zeTzBfvj9cmf18ir_Ag488lKoJQ/exec';
+
+migrateStorage();
+
+// Pre-populate Sheets URL on first load if not already set
+(function() {
+  const s = getSettings();
+  if (!s.sheetsUrl) {
+    s.sheetsUrl = DEFAULT_SHEETS_URL;
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
+  }
+})();
+
+initDash();
+pullFromSheets();
+</script>
+</body>
+</html>
